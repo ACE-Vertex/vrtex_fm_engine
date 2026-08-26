@@ -10,6 +10,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
+    "check": "pnpm run build",
+    "test:native": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "verify": "pnpm run build && pnpm run test:native",
     "preview": "vite preview",
     "tauri": "tauri"
   },

@@ -5,7 +5,7 @@
 | 製品名 | Vertex FM Engine |
 | 現在のバージョン | 0.1.0 |
 | 文書版 | 1.0 |
-| 更新日 | 2026-08-11 |
+| 更新日 | 2026-08-26 |
 | 主対象OS | Windows 10/11（64-bit） |
 | アプリケーション形態 | Tauri 2によるネイティブデスクトップアプリケーション |
 | リポジトリ | `ACE-FRDS/vrtex_fm_engine` |
@@ -362,6 +362,10 @@ TauriのBundle設定に従ってWindows Installerを生成します。リリー�
 ## 18. 主要ソース配置
 
 ```text
+docs/                アーキテクチャ、仕様、設計判断、開発資料
+scripts/             検証等の開発補助スクリプト
+tests/               リポジトリ横断テストとE2E試験の配置先
+
 src/
   components/       Vue UIコンポーネント
   domain/           設計・検証ドメイン
@@ -381,6 +385,8 @@ src-tauri/
   src/license.rs     ネイティブFeature Access
 ```
 
+Community APIは別配備単位であるため、`ACE-FRDS/vrtex_fm_engine_community_api`で独立管理します。Installerと配布成果物もSource Repository外のBuilds / Releases領域で管理します。
+
 ---
 
-この文書は2026-08-11時点のソースコードを基準にした現行仕様です。実装変更時は`package.json`、`Cargo.toml`、Tauri Command、Migration、Feature Keyと併せて更新してください。
+この文書は2026-08-26時点のプロジェクト構成とソースコードを基準にした現行仕様です。実装変更時は`package.json`、`Cargo.toml`、Tauri Command、Migration、Feature Keyと併せて更新してください。
