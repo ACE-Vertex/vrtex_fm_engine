@@ -1,6 +1,21 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
-import { Quasar, Dialog, Notify, QBadge, QBtn, QTooltip } from 'quasar'
+import {
+  Quasar,
+  ClosePopup,
+  Dialog,
+  Notify,
+  QBadge,
+  QBtn,
+  QIcon,
+  QItem,
+  QItemLabel,
+  QItemSection,
+  QList,
+  QMenu,
+  QSeparator,
+  QTooltip,
+} from 'quasar'
 import '@quasar/extras/material-icons/material-icons.css'
 import 'quasar/src/css/index.sass'
 import './styles/main.scss'
@@ -9,7 +24,8 @@ import App from './App.vue'
 createApp(App)
   .use(createPinia())
   .use(Quasar, {
-    components: { QBadge, QBtn, QTooltip },
+    components: { QBadge, QBtn, QIcon, QItem, QItemLabel, QItemSection, QList, QMenu, QSeparator, QTooltip },
+    directives: { ClosePopup },
     plugins: { Dialog, Notify },
     config: {
       brand: {

@@ -71,6 +71,32 @@ export interface FileMakerStatus {
   displayName: string
 }
 
+export interface NativeItemTags {
+  clipboardItemId: string
+  tags: string[]
+}
+
+export interface NativeCollection {
+  id: string
+  name: string
+  parentId: string | null
+  count: number
+}
+
+export interface NativeCollectionAssignment {
+  collectionId: string
+  clipboardItemId: string
+}
+
+export interface UpdateCheck {
+  currentVersion: string
+  latestVersion: string
+  updateAvailable: boolean
+  releaseUrl: string
+  publishedAt: string | null
+  notes: string
+}
+
 export const nativeGateway = {
   listHistory(limit = 500) {
     return invoke<NativeClipboardItem[]>('list_clipboard_history', { limit })
@@ -99,6 +125,27 @@ export const nativeGateway = {
   clearAll() {
     return invoke<number>('clear_all_data')
   },
+  listTags() {
+    return invoke<NativeItemTags[]>('list_clipboard_tags')
+  },
+  setTags(itemId: string, tags: string[]) {
+    return invoke<string[]>('set_clipboard_tags', { itemId, tags })
+  },
+  listCollections() {
+    return invoke<NativeCollection[]>('list_collections')
+  },
+  saveCollection(collection: NativeCollection) {
+    return invoke<NativeCollection>('save_collection', { collection })
+  },
+  deleteCollection(id: string, fallbackId?: string) {
+    return invoke<boolean>('delete_collection', { id, fallbackId: fallbackId ?? null })
+  },
+  listCollectionAssignments() {
+    return invoke<NativeCollectionAssignment[]>('list_collection_assignments')
+  },
+  assignCollectionItem(collectionId: string, itemId: string) {
+    return invoke<boolean>('assign_collection_item', { collectionId, itemId })
+  },
   detectFormat(xml: string) {
     return invoke<DetectionResult>('detect_xml_format', { xml })
   },
@@ -110,5 +157,14 @@ export const nativeGateway = {
   },
   detectFileMaker() {
     return invoke<FileMakerStatus>('detect_filemaker')
+  },
+  saveWorkspaceFile(path: string, contents: string) {
+    return invoke<void>('save_workspace_file', { path, contents })
+  },
+  readWorkspaceFile(path: string) {
+    return invoke<string>('read_workspace_file', { path })
+  },
+  checkForUpdates(currentVersion: string) {
+    return invoke<UpdateCheck>('check_for_updates', { currentVersion })
   },
 }

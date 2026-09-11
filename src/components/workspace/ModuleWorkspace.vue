@@ -4,26 +4,53 @@ import { useQuasar } from 'quasar'
 import { useClipboardStore } from '../../stores/clipboard'
 import { useEditorStore } from '../../stores/editor'
 import { useLibraryStore } from '../../stores/library'
-import { useSettingsStore } from '../../stores/settings'
+import { useCollectionWorkspaceStore } from '../../stores/collectionWorkspace'
+import { appThemes, useSettingsStore } from '../../stores/settings'
 import { useLocaleStore } from '../../stores/locale'
 import { useAiAssistantStore } from '../../stores/aiAssistant'
+import { useNavigationStore } from '../../stores/navigation'
 import { aiGateway } from '../../services/aiGateway'
-import { isTauriRuntime } from '../../services/nativeGateway'
-import type { AiConnectionTest } from '../../types/ai'
+import { isTauriRuntime, nativeGateway } from '../../services/nativeGateway'
+import { formatXmlForDisplay } from '../../utils/xmlFormat'
+import type { AiConnectionTest, RagDocument } from '../../types/ai'
 import type { WorkspaceMode } from '../../stores/navigation'
 
-const props = defineProps<{ mode: Exclude<WorkspaceMode, 'clipboard' | 'codex' | 'docs'> }>()
+const props = defineProps<{ mode: Exclude<WorkspaceMode, 'clipboard' | 'codex' | 'knowledge' | 'relationship' | 'docs'> }>()
 const $q = useQuasar()
 const clipboard = useClipboardStore()
 const editor = useEditorStore()
 const library = useLibraryStore()
+const collectionWorkspace = useCollectionWorkspaceStore()
 const settings = useSettingsStore()
 const locale = useLocaleStore()
 const ai = useAiAssistantStore()
+const navigation = useNavigationStore()
 const settingsSection = ref<'general' | 'codex' | 'data'>('general')
+const openingLibraryItemId = ref('')
 const openAiApiKey = ref('')
 const credentialBusy = ref(false)
 const connectionTest = ref<AiConnectionTest | null>(null)
+const libraryQuery = ref('')
+const librarySort = ref<'recent' | 'name'>('recent')
+const ragDocuments = ref<RagDocument[]>([])
+const ragLoading = ref(false)
+const ragTitle = ref('')
+const ragContent = ref('')
+const ragTags = ref('')
+const ragSourceType = ref('filemaker-spec')
+
+const visibleLibraryItems = computed(() => {
+  const query = libraryQuery.value.trim().toLocaleLowerCase()
+  const filtered = query
+    ? clipboard.libraryItems.filter((item) =>
+        [item.name, item.format, item.objectType, item.windowsFormat, ...item.tags]
+          .some((value) => value.toLocaleLowerCase().includes(query)),
+      )
+    : [...clipboard.libraryItems]
+  return filtered.sort((left, right) => librarySort.value === 'name'
+    ? left.name.localeCompare(right.name, locale.language)
+    : Date.parse(right.lastUsedAt || right.updatedAt) - Date.parse(left.lastUsedAt || left.updatedAt))
+})
 
 const selectedProviderStatus = computed(() =>
   ai.providers.find((provider) => provider.id === settings.codexIntegration) ?? null,
@@ -74,6 +101,185 @@ const tools = computed(() => [
   { icon: 'psychology', name: 'AI Assistant', detail: locale.t('toolAiDescription'), state: locale.t('available'), planned: false },
 ])
 
+async function openTool(name: string) {
+  if (name === 'XML Repair') return
+  if (name === 'AI Assistant') {
+    navigation.setActive('codex')
+    return
+  }
+  if (!clipboard.selectedItem) {
+    $q.notify({ type: 'warning', message: locale.language === 'ja' ? '先にクリップボード項目を選択してください' : 'Select a Clipboard item first' })
+    navigation.setActive('clipboard')
+    return
+  }
+  if (name === 'XML Diff') editor.activeTab = 'diff'
+  else if (name === 'Structure Viewer') editor.activeTab = 'structure'
+  else {
+    editor.activeTab = 'xml'
+    if (name === 'XML Validation') {
+      await editor.validate(clipboard.selectedItem.format)
+      const errors = editor.validation.filter((result) => result.level === 'error').length
+      $q.notify({
+        type: errors ? 'negative' : 'positive',
+        message: errors
+          ? `${errors}${locale.t('validationErrorsSuffix')}`
+          : locale.t('validationPassedNotice'),
+      })
+    } else if (name === 'Format Detection') {
+      const detected = isTauriRuntime()
+        ? await nativeGateway.detectFormat(editor.content)
+        : { format: clipboard.selectedItem.format, objectType: clipboard.selectedItem.objectType }
+      $q.notify({
+        type: 'info',
+        icon: 'radar',
+        message: `${detected.format} · ${detected.objectType}`,
+      })
+    }
+  }
+  navigation.setActive('clipboard')
+}
+
+function collectionItemCount(projectId: string) {
+  return clipboard.items.filter((item) =>
+    item.inHistory && collectionWorkspace.projectIdForItem(item.id) === projectId,
+  ).length
+}
+
+function openCollection(projectId: string) {
+  collectionWorkspace.selectProject(projectId)
+  collectionWorkspace.selectCategory('all')
+  library.selectedCollectionId = projectId
+  navigation.setActive('clipboard')
+}
+
+function createCollection() {
+  $q.dialog({
+    title: locale.language === 'ja' ? 'コレクションProjectを追加' : 'Add Collection Project',
+    message: locale.language === 'ja'
+      ? 'FileMaker開発資産を整理するProject名を入力してください。'
+      : 'Enter a Project name for organizing FileMaker assets.',
+    prompt: {
+      model: '',
+      type: 'text',
+      placeholder: locale.language === 'ja' ? '例：顧客管理システム' : 'Example: Customer System',
+      isValid: (value) => value.trim().length > 0,
+    },
+    cancel: { label: locale.t('cancel'), flat: true },
+    ok: { label: locale.language === 'ja' ? '追加する' : 'Add', color: 'primary' },
+    persistent: true,
+    class: 'vertex-dialog collection-create-dialog',
+  }).onOk(async (name: string) => {
+    const collection = { id: crypto.randomUUID(), name: name.trim(), count: 0, children: [] }
+    try {
+      await library.saveCollection(collection)
+      openCollection(collection.id)
+      $q.notify({ type: 'positive', message: locale.language === 'ja' ? 'コレクションを追加しました' : 'Collection added' })
+    } catch (error) {
+      $q.notify({ type: 'negative', message: String(error) })
+    }
+  })
+}
+
+async function loadRagDocuments() {
+  ragLoading.value = true
+  try {
+    ragDocuments.value = await aiGateway.listRagDocuments()
+  } catch (error) {
+    $q.notify({ type: 'negative', message: String(error) })
+  } finally {
+    ragLoading.value = false
+  }
+}
+
+async function addRagDocument() {
+  if (!ragTitle.value.trim() || !ragContent.value.trim() || ragLoading.value) return
+  ragLoading.value = true
+  try {
+    const saved = await aiGateway.saveRagDocument({
+      title: ragTitle.value.trim(),
+      content: ragContent.value.trim(),
+      sourceType: ragSourceType.value,
+      tags: ragTags.value.trim(),
+    })
+    ragDocuments.value = [saved, ...ragDocuments.value.filter((document) => document.id !== saved.id)]
+    ragTitle.value = ''
+    ragContent.value = ''
+    ragTags.value = ''
+    $q.notify({ type: 'positive', message: locale.language === 'ja' ? 'RAGドキュメントを追加しました' : 'RAG document added' })
+  } catch (error) {
+    $q.notify({ type: 'negative', message: String(error) })
+  } finally {
+    ragLoading.value = false
+  }
+}
+
+function deleteRagDocument(document: RagDocument) {
+  $q.dialog({
+    title: locale.language === 'ja' ? 'RAGドキュメントを削除' : 'Delete RAG Document',
+    message: `「${document.title}」${locale.language === 'ja' ? 'を削除しますか？' : ' will be deleted.'}`,
+    cancel: { label: locale.t('cancel'), flat: true },
+    ok: { label: locale.t('deleteAction'), color: 'negative' },
+    persistent: true,
+    class: 'vertex-dialog',
+  }).onOk(async () => {
+    try {
+      await aiGateway.deleteRagDocument(document.id)
+      ragDocuments.value = ragDocuments.value.filter((candidate) => candidate.id !== document.id)
+      $q.notify({ type: 'positive', message: locale.language === 'ja' ? 'RAGドキュメントを削除しました' : 'RAG document deleted' })
+    } catch (error) {
+      $q.notify({ type: 'negative', message: String(error) })
+    }
+  })
+}
+
+async function openLibraryItem(id: string) {
+  if (openingLibraryItemId.value) return
+  openingLibraryItemId.value = id
+
+  try {
+    const source = clipboard.libraryItems.find((item) => item.id === id)
+    if (!source) throw new Error(`Library item not found: ${id}`)
+
+    const tags = [...source.tags]
+    const item = await clipboard.upsert({
+      id: source.id,
+      name: source.name,
+      format: source.format,
+      windowsFormat: source.windowsFormat,
+      objectType: source.objectType,
+      xml: source.xml,
+      notes: source.notes,
+      favorite: source.favorite,
+      inLibrary: true,
+      inHistory: true,
+    })
+
+    item.tags = tags
+    const historyIndex = clipboard.items.findIndex((candidate) => candidate.id === item.id)
+    if (historyIndex >= 0) clipboard.items.splice(historyIndex, 1)
+    clipboard.items.unshift(item)
+
+    const libraryIndex = clipboard.libraryItems.findIndex((candidate) => candidate.id === item.id)
+    if (libraryIndex >= 0) clipboard.libraryItems[libraryIndex] = { ...item, tags }
+
+    const displayXml = formatXmlForDisplay(item.xml)
+    editor.content = displayXml
+    editor.savedContent = displayXml
+    editor.activeTab = 'xml'
+    navigation.setActive('clipboard')
+
+    await Promise.all([
+      editor.validate(item.format),
+      editor.buildPreview(),
+    ])
+    $q.notify({ type: 'positive', message: locale.t('libraryItemOpened') })
+  } catch (error) {
+    $q.notify({ type: 'negative', message: String(error) })
+  } finally {
+    openingLibraryItemId.value = ''
+  }
+}
+
 type DeleteScope = 'library' | 'clipboard' | 'all'
 
 function confirmDeletion(scope: DeleteScope) {
@@ -85,11 +291,14 @@ function confirmDeletion(scope: DeleteScope) {
   const count = scope === 'library'
     ? clipboard.libraryItems.length
     : scope === 'clipboard'
-      ? clipboard.items.length
+      ? clipboard.items.filter((item) => item.inHistory).length
       : clipboard.libraryItems.length + clipboard.items.length
+  const preserveNotice = scope === 'clipboard'
+    ? locale.language === 'ja' ? ' お気に入りは残ります。' : ' Favorites will remain.'
+    : ''
   const message = locale.language === 'ja'
-    ? `${labels[scope]}を実行します。対象は${count}件です。この操作は取り消せません。`
-    : `${labels[scope]} will remove ${count} item(s). This action cannot be undone.`
+    ? `${labels[scope]}を実行します。対象は${count}件です。この操作は取り消せません。${preserveNotice}`
+    : `${labels[scope]} will remove ${count} item(s). This action cannot be undone.${preserveNotice}`
 
   $q.dialog({
     title: locale.t('deleteConfirmTitle'),
@@ -101,10 +310,12 @@ function confirmDeletion(scope: DeleteScope) {
     try {
       if (scope === 'all') {
         await clipboard.clearAll()
-        library.clearCollections()
+        await library.clearCollections()
+        collectionWorkspace.clear()
       } else if (scope === 'library') {
         await clipboard.clearLibrary()
-        library.clearCollections()
+        await library.clearCollections()
+        collectionWorkspace.clear()
       } else {
         await clipboard.clearClipboard()
       }
@@ -205,22 +416,33 @@ function confirmOpenAiApiKeyDeletion() {
 
     <section v-if="mode === 'library'" class="module-body library-workspace">
       <div class="module-toolbar">
-        <label><span class="material-icons">search</span><input type="search" :placeholder="locale.t('searchLibrary')" /></label>
-        <button type="button"><span class="material-icons">sort</span>{{ locale.t('sortRecent') }}</button>
+        <label><span class="material-icons">search</span><input v-model="libraryQuery" type="search" :placeholder="locale.t('searchLibrary')" /></label>
+        <button type="button" @click="librarySort = librarySort === 'recent' ? 'name' : 'recent'"><span class="material-icons">sort</span>{{ librarySort === 'recent' ? locale.t('sortRecent') : (locale.language === 'ja' ? '名前順' : 'Name') }}</button>
       </div>
       <div class="library-grid">
-        <div v-if="clipboard.libraryItems.length === 0" class="library-empty">
+        <div v-if="visibleLibraryItems.length === 0" class="library-empty">
           <span class="material-icons">inventory_2</span>
-          <p>{{ locale.t('noItems') }}</p>
+          <p>{{ libraryQuery ? (locale.language === 'ja' ? '一致する項目がありません' : 'No matching items') : locale.t('noItems') }}</p>
         </div>
-        <article v-for="item in clipboard.libraryItems" :key="item.id" class="library-card">
+        <article
+          v-for="item in visibleLibraryItems"
+          :key="item.id"
+          class="library-card"
+          :class="{ opening: openingLibraryItemId === item.id }"
+          role="button"
+          tabindex="0"
+          :aria-busy="openingLibraryItemId === item.id"
+          @click="openLibraryItem(item.id)"
+          @keydown.enter.prevent="openLibraryItem(item.id)"
+          @keydown.space.prevent="openLibraryItem(item.id)"
+        >
           <div class="library-format">{{ item.format }}</div>
           <button
             class="library-star"
             :class="{ active: item.favorite }"
             type="button"
             :aria-label="item.favorite ? locale.t('removeFavorite') : locale.t('addFavorite')"
-            @click="clipboard.toggleFavorite(item.id)"
+            @click.stop="clipboard.toggleFavorite(item.id)"
           >
             <span class="material-icons">{{ item.favorite ? 'star' : 'star_border' }}</span>
           </button>
@@ -234,11 +456,11 @@ function confirmOpenAiApiKeyDeletion() {
     <section v-else-if="mode === 'collections'" class="module-body collections-workspace">
       <div class="module-toolbar">
         <strong>{{ library.collections.length }} {{ locale.t('projectCollections') }}</strong>
-        <button type="button"><span class="material-icons">create_new_folder</span>{{ locale.t('newCollection') }}</button>
+        <button type="button" @click="createCollection"><span class="material-icons">create_new_folder</span>{{ locale.t('newCollection') }}</button>
       </div>
       <div class="collection-board">
-        <article v-for="collection in library.collections" :key="collection.id" class="collection-board-card">
-          <header><span class="material-icons">folder_open</span><strong>{{ collection.name }}</strong><em>{{ collection.count }}</em></header>
+        <article v-for="collection in library.collections" :key="collection.id" class="collection-board-card" role="button" tabindex="0" @click="openCollection(collection.id)" @keydown.enter.prevent="openCollection(collection.id)">
+          <header><span class="material-icons">folder_open</span><strong>{{ collection.name }}</strong><em>{{ collectionItemCount(collection.id) }}</em></header>
           <div v-for="child in collection.children" :key="child.id">
             <span class="material-icons">folder</span><span>{{ child.name }}</span><em>{{ child.count }}</em>
           </div>
@@ -247,7 +469,7 @@ function confirmOpenAiApiKeyDeletion() {
     </section>
 
     <section v-else-if="mode === 'tools'" class="module-body tools-grid">
-      <article v-for="tool in tools" :key="tool.name" class="tool-card" :class="{ planned: tool.planned }">
+      <article v-for="tool in tools" :key="tool.name" class="tool-card" :class="{ planned: tool.planned }" :role="tool.planned ? undefined : 'button'" :tabindex="tool.planned ? -1 : 0" @click="openTool(tool.name)" @keydown.enter.prevent="openTool(tool.name)">
         <span class="material-icons">{{ tool.icon }}</span>
         <div class="tool-card-copy">
           <strong>{{ tool.name }}</strong>
@@ -263,12 +485,55 @@ function confirmOpenAiApiKeyDeletion() {
     <section v-else class="module-body settings-workspace">
       <nav class="settings-subnav" :aria-label="locale.t('navSettings')">
         <button type="button" :class="{ active: settingsSection === 'general' }" @click="settingsSection = 'general'"><span class="settings-tab-content"><span class="material-icons">tune</span><span>{{ locale.t('settingsGeneralTab') }}</span></span></button>
-        <button type="button" :class="{ active: settingsSection === 'codex' }" @click="settingsSection = 'codex'"><span class="settings-tab-content"><span class="material-icons">smart_toy</span><span>{{ locale.t('settingsCodexTab') }}</span></span></button>
+        <button type="button" :class="{ active: settingsSection === 'codex' }" @click="settingsSection = 'codex'; loadRagDocuments()"><span class="settings-tab-content"><span class="material-icons">smart_toy</span><span>{{ locale.t('settingsCodexTab') }}</span></span></button>
         <button type="button" :class="{ active: settingsSection === 'data' }" @click="settingsSection = 'data'"><span class="settings-tab-content"><span class="material-icons">database</span><span>{{ locale.t('settingsDataTab') }}</span></span></button>
       </nav>
 
       <Transition name="settings-slide" mode="out-in">
         <div v-if="settingsSection === 'general'" key="general" class="settings-page general-settings-page">
+          <div class="settings-group appearance-settings">
+            <span>{{ locale.t('appearanceSettings') }}</span>
+            <div class="theme-picker-heading">
+              <div><strong>{{ locale.t('colorTheme') }}</strong><small>{{ locale.t('colorThemeHelp') }}</small></div>
+              <div class="theme-picker-actions">
+                <label class="cursor-theme-toggle">
+                  <span class="material-icons" aria-hidden="true">mouse</span>
+                  <span class="cursor-theme-toggle-copy">
+                    <strong>{{ locale.language === 'ja' ? 'テーマ連動カーソル' : 'Theme cursor' }}</strong>
+                    <small>{{ settings.customCursor ? (locale.language === 'ja' ? 'テーマ色を使用' : 'Uses theme color') : (locale.language === 'ja' ? 'Windows標準' : 'System default') }}</small>
+                  </span>
+                  <input
+                    v-model="settings.customCursor"
+                    type="checkbox"
+                    role="switch"
+                    :aria-label="locale.language === 'ja' ? 'テーマ連動カーソル' : 'Theme cursor'"
+                  />
+                </label>
+                <em>{{ appThemes.length }} THEMES</em>
+              </div>
+            </div>
+            <div class="theme-grid" role="radiogroup" :aria-label="locale.t('colorTheme')">
+              <button
+                v-for="themeOption in appThemes"
+                :key="themeOption.id"
+                type="button"
+                class="theme-card"
+                :class="{ active: settings.theme === themeOption.id }"
+                role="radio"
+                :aria-checked="settings.theme === themeOption.id"
+                @click="settings.theme = themeOption.id"
+              >
+                <span class="theme-swatch" aria-hidden="true">
+                  <i v-for="color in themeOption.colors" :key="color" :style="{ backgroundColor: color }" />
+                </span>
+                <span class="theme-card-copy">
+                  <strong>{{ locale.language === 'ja' ? themeOption.nameJa : themeOption.nameEn }}</strong>
+                  <small>{{ locale.language === 'ja' ? themeOption.descriptionJa : themeOption.descriptionEn }}</small>
+                </span>
+                <span v-if="settings.theme === themeOption.id" class="material-icons theme-selected">check_circle</span>
+              </button>
+            </div>
+          </div>
           <div class="settings-group">
             <span>{{ locale.t('editorSettings') }}</span>
             <label><div><strong>{{ locale.t('monacoFontSize') }}</strong><small>{{ locale.t('monacoFontSizeHelp') }}</small></div><input v-model.number="settings.fontSize" type="number" min="10" max="24" /></label>
@@ -352,6 +617,26 @@ function confirmOpenAiApiKeyDeletion() {
             <div class="codex-settings-actions">
               <span :class="{ online: connectionTest?.success, failed: connectionTest && !connectionTest.success }"><i />{{ connectionTest?.detail ?? selectedProviderStatus?.detail ?? locale.t('codexConnectionPending') }}</span>
               <button type="button" :disabled="credentialBusy" @click="checkCodexConnection"><span class="material-icons">{{ credentialBusy ? 'hourglass_top' : 'sync' }}</span>{{ credentialBusy ? '確認中…' : locale.t('checkConnection') }}</button>
+            </div>
+            <div class="rag-management">
+              <div class="rag-management-heading">
+                <div><strong>SQLite RAG</strong><small>{{ locale.language === 'ja' ? 'FileMaker仕様・専門ルールをAIの参照情報として管理します。' : 'Manage FileMaker specifications and rules used by AI.' }}</small></div>
+                <span>{{ ragDocuments.length }} {{ locale.language === 'ja' ? '件' : 'documents' }}</span>
+              </div>
+              <div class="rag-entry-grid">
+                <input v-model="ragTitle" type="text" :placeholder="locale.language === 'ja' ? 'タイトル' : 'Title'" />
+                <select v-model="ragSourceType" aria-label="RAG source type"><option value="filemaker-spec">FileMaker Spec</option><option value="vertex-rule">Vertex Rule</option><option value="project-rule">Project Rule</option></select>
+                <input v-model="ragTags" type="text" :placeholder="locale.language === 'ja' ? 'タグ（空白区切り）' : 'Tags'" />
+                <textarea v-model="ragContent" rows="3" :placeholder="locale.language === 'ja' ? 'FileMaker仕様やルールの本文' : 'Specification or rule content'" />
+                <button type="button" :disabled="ragLoading || !ragTitle.trim() || !ragContent.trim()" @click="addRagDocument"><span class="material-icons">add</span>{{ locale.language === 'ja' ? 'RAGへ追加' : 'Add to RAG' }}</button>
+              </div>
+              <div class="rag-document-list">
+                <div v-for="document in ragDocuments" :key="document.id" class="rag-document-row">
+                  <span class="material-icons">description</span>
+                  <div><strong>{{ document.title }}</strong><small>{{ document.sourceType }} · {{ document.tags || '—' }}</small></div>
+                  <button type="button" :aria-label="`${document.title}を削除`" @click="deleteRagDocument(document)"><span class="material-icons">delete_outline</span></button>
+                </div>
+              </div>
             </div>
           </div>
         </div>

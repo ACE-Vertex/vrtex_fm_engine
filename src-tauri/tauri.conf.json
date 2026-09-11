@@ -13,8 +13,8 @@
     "windows": [
       {
         "title": "Vertex FM Engine",
-        "width": 1600,
-        "height": 1000,
+        "width": 1920,
+        "height": 1200,
         "minWidth": 1180,
         "minHeight": 720,
         "resizable": true,

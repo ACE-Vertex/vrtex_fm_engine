@@ -41,6 +41,20 @@ export interface RagDocument {
   score: number
 }
 
+export interface SaveRagDocumentInput {
+  id?: string
+  title: string
+  content: string
+  sourceType: string
+  tags: string
+}
+
+export interface AiWorkspaceData {
+  sessions: AiSession[]
+  messages: AiMessage[]
+  ragDocuments: RagDocument[]
+}
+
 export interface AiProviderStatus {
   id: string
   name: string
@@ -64,6 +78,8 @@ export interface AiProviderRequest {
   dryRun: boolean
   format?: string
   currentXml?: string
+  currentDesign?: string
+  responseSchema?: Record<string, unknown>
   ragContext: string[]
   userPrompt: string
 }

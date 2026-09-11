@@ -20,6 +20,29 @@ pub struct ClipboardItem {
     pub last_used_at: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemTags {
+    pub clipboard_item_id: String,
+    pub tags: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CollectionRecord {
+    pub id: String,
+    pub name: String,
+    pub parent_id: Option<String>,
+    pub count: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CollectionAssignment {
+    pub collection_id: String,
+    pub clipboard_item_id: String,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SaveClipboardItem {

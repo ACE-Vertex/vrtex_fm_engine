@@ -223,9 +223,10 @@ mod tests {
     fn diagnoses_live_filemaker_formats() {
         let _guard = ClipboardGuard::open().expect("Clipboard should be readable");
         let formats = enumerate_registered_formats().expect("formats should be enumerable");
-        for (format_id, format_name) in formats.iter().filter(|(_, name)| {
-            name.starts_with("Mac-XM") || name == "Mac-XML2"
-        }) {
+        for (format_id, format_name) in formats
+            .iter()
+            .filter(|(_, name)| name.starts_with("Mac-XM") || name == "Mac-XML2")
+        {
             match read_global_clipboard_data(*format_id) {
                 Ok(raw) => match decode_filemaker_payload(&raw) {
                     Ok(xml) => println!(

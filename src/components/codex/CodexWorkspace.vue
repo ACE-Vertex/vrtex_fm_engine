@@ -292,4 +292,261 @@ function formatTime(value: string) {
 .ai-editor-pane{display:grid;grid-template-rows:68px 48px 54px 34px minmax(0,1fr) 28px;border-right:1px solid #274052;background:#090f16}.ai-titlebar{display:flex;align-items:center;padding:0 16px;gap:11px;border-bottom:1px solid #1f3443;background:radial-gradient(circle at 4% 0,rgba(42,152,225,.16),transparent 28%),linear-gradient(180deg,#111c26,#0d151e)}.ai-title-icon{display:grid;width:38px;height:38px;place-items:center;border:1px solid #23658e;border-radius:6px;background:#10304a;color:#55c4ff}.ai-title-copy{display:flex;min-width:0;flex:1;flex-direction:column}.ai-title-copy strong{color:#d8e6f1;font-size:15px}.ai-title-copy small{color:#668095;font-size:10px}.ai-title-badges{display:flex;gap:5px}.ai-title-badges span{padding:4px 6px;border:1px solid #294153;border-radius:3px;background:#0b141c;color:#7990a3;font-size:9px}.ai-title-badges i{display:inline-block;width:5px;height:5px;margin-right:4px;border-radius:50%;background:#68747f}.ai-title-badges .online{color:#70cda2}.ai-title-badges .online i{background:#43d28f;box-shadow:0 0 5px #43d28f}.ai-controls{display:flex;align-items:center;padding:0 12px;gap:8px;border-bottom:1px solid #1c2f3d;background:#0a1219}.ai-controls label{display:flex;align-items:center;gap:6px;color:#658095;font-size:9.5px}.ai-controls select{height:27px;border:1px solid #284154;border-radius:3px;outline:0;background:#0e1922;color:#afc4d3;font-size:10px}.dry-run-control{margin-left:auto}.dry-run-control input{width:32px;height:17px;accent-color:#22a7f3}.dry-run-control>span{display:flex;flex-direction:column}.dry-run-control strong{color:#7dc9f4;font-size:10px}.dry-run-control small{color:#526b7d;font-size:8px}.ai-documentbar{display:flex;align-items:center;padding:0 12px;gap:9px;border-bottom:1px solid #192a36;background:#0c141c}.format-badge{display:grid;width:42px;height:30px;place-items:center;border:1px solid #2473a4;border-radius:3px;background:#0d2b40;color:#57c3ff;font:9px "Cascadia Code",monospace;font-weight:800}.ai-documentbar>div:nth-child(2){display:flex;min-width:0;flex:1;flex-direction:column}.ai-documentbar strong{overflow:hidden;color:#cbd9e5;font-size:11px;text-overflow:ellipsis;white-space:nowrap}.ai-documentbar small{color:#60778a;font-size:9px}.document-actions{display:flex;gap:5px}.document-actions button{display:flex;height:28px;align-items:center;padding:0 7px;gap:4px;border:1px solid #284052;border-radius:3px;background:#101b25;color:#849aab;cursor:pointer;font-size:9px}.document-actions button:disabled{cursor:not-allowed;opacity:.35}.document-actions .material-icons{font-size:14px}.ai-editor-tabs{display:flex;border-bottom:1px solid #1e303e;background:#0a1017}.ai-editor-tabs button{position:relative;width:70px;border:0;background:transparent;color:#5f7b90;font-size:9.5px}.ai-editor-tabs button.active{color:#72bce7}.ai-editor-tabs button.active:after{position:absolute;right:10px;bottom:0;left:10px;height:2px;background:#28a9ff;content:""}.ai-editor-canvas{position:relative;min-width:0;min-height:0;overflow:hidden}.ai-editor-canvas :deep(.monaco-host){width:100%;height:100%}.empty-xml{position:absolute;inset:0;display:grid;place-content:center;color:#536b7d;text-align:center;pointer-events:none}.empty-xml .material-icons{font-size:34px}.ai-editor-footer{display:flex;align-items:center;justify-content:space-between;padding:0 10px;border-top:1px solid #1b2c39;background:#0b141c;color:#5f7587;font:9px "Cascadia Code",monospace}.ai-editor-footer>span:first-child{display:flex;align-items:center;gap:4px;font-family:Inter,"Yu Gothic UI",sans-serif}.ai-editor-footer .material-icons{color:#51b789;font-size:12px}
 .ai-chat-pane{display:grid;grid-template-rows:58px auto minmax(120px,1fr) auto auto;background:linear-gradient(180deg,#0d161f,#090f15)}.ai-chat-header>div{display:grid;grid-template-columns:auto minmax(0,1fr);gap:0 7px}.ai-chat-header>div>.material-icons{grid-row:1/3;color:#53bdf7;font-size:22px}.ai-chat-header strong{color:#d0dfeb;font-size:13px}.ai-chat-header small{overflow:hidden;color:#667c8d;font-size:8.5px;text-overflow:ellipsis;white-space:nowrap}.ai-context-panel{border-bottom:1px solid #203442;background:#0c151e}.ai-context-panel>header{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;color:#7f9aad;font-size:9.5px}.ai-context-panel>header span{color:#4cabc3}.context-grid{display:grid;padding:0 12px 9px;grid-template-columns:1fr 1fr;gap:5px 8px}.context-grid>span{display:grid;grid-template-columns:7px 1fr;align-items:center;color:#668093;font-size:8.5px}.context-grid i{width:5px;height:5px;border-radius:50%;background:#6a737b}.context-grid i.ok{background:#43cf8c;box-shadow:0 0 4px #43cf8c}.context-grid b{grid-column:2;color:#9eb6c7;font-size:9px;font-weight:500}.ai-message-scroll{overflow:auto;padding:12px}.ai-message{display:grid;margin-bottom:12px;grid-template-columns:27px 1fr;gap:8px}.message-avatar{display:grid;width:27px;height:27px;place-items:center;border:1px solid #27506a;border-radius:5px;background:#102638;color:#4cbcfb;font-size:16px}.ai-message.user .message-avatar{border-color:#44566b;background:#1b2530;color:#a4b5c4}.ai-message.system .message-avatar{border-color:#7b562c;background:#291e13;color:#f0aa50}.ai-message strong{color:#a9c0d0;font-size:10px}.ai-message p{margin:3px 0 0;color:#8fa6b7;font-size:10.5px;line-height:1.65;white-space:pre-wrap}.ai-message.system p{color:#dda86b}.ai-suggestions{display:grid;gap:6px}.ai-suggestions button{display:flex;min-height:34px;align-items:center;justify-content:space-between;padding:0 10px;border:1px solid #263e50;border-radius:4px;background:#0d1922;color:#83a0b5;cursor:pointer;font-size:9.5px}.ai-suggestions .material-icons{font-size:14px}.ai-stage-card{display:flex;margin-top:10px;padding:10px;flex-direction:column;gap:7px;border:1px solid #224761;border-radius:4px;background:#0c1d2a}.ai-stage-card strong{color:#6dc7f4;font-size:10px}.ai-stage-card span{display:flex;align-items:center;gap:7px;color:#7e97a9;font-size:9px}.ai-stage-card i{width:7px;height:7px;border:1px solid #4b6b80;border-radius:50%}.ai-stage-card i.done{border-color:#3bc987;background:#3bc987}.approval-card{margin:0 10px 8px;border:1px solid #29465a;border-radius:5px;background:#0d1821}.approval-card>header,.approval-card>div{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-bottom:1px solid #213644}.approval-card strong{color:#b7cad8;font-size:10px}.risk{padding:3px 6px;border-radius:3px;background:#16304a;color:#65c5fb;font-size:8.5px}.risk.high,.risk.critical{background:#461d25;color:#ff8896}.approval-card>div{color:#7690a2;font-size:9px}.approval-card b{font-size:9px}.approval-card b.pass{color:#48d28e}.approval-card b.fail{color:#ff7584}.approval-card p{margin:5px 10px;color:#6f899b;font-size:8.5px}.approval-card p.error{color:#ff7a87}.approval-card footer{display:grid;padding:8px;grid-template-columns:1fr 1fr;gap:6px}.approval-card button{height:30px;border:1px solid #315269;border-radius:3px;background:#10202b;color:#9eb8c9;font-size:9px}.approval-card button.send{border-color:#197dba;background:#1269a3;color:white}.approval-card button:disabled{cursor:not-allowed;opacity:.35}.ai-composer{margin:0 10px 10px;border:1px solid #2a495d;border-radius:5px;background:#0b141c;box-shadow:0 8px 24px rgba(0,0,0,.2)}.ai-composer textarea{width:100%;min-height:58px;resize:none;border:0;outline:0;background:transparent;color:#bad0df;padding:9px;font:10.5px Inter,"Yu Gothic UI",sans-serif;box-sizing:border-box}.ai-composer footer{display:flex;align-items:center;justify-content:space-between;padding:5px 7px;border-top:1px solid #1e3341;color:#5990ad;font-size:8.5px}.ai-composer footer>span{display:flex;align-items:center;gap:4px}.ai-composer footer .material-icons{font-size:13px}.ai-composer button{display:grid;width:28px;height:28px;place-items:center;border:0;border-radius:4px;background:#168dd1;color:#fff;cursor:pointer}.ai-composer button:disabled{opacity:.35}
 @media(max-width:1280px){.ai-workspace{grid-template-columns:180px minmax(400px,1fr) 350px}.ai-title-badges span:first-child{display:none}.document-actions button{font-size:0}.document-actions .material-icons{font-size:14px}}
+
+/* Keep the complete Codex workspace in sync with the selected application theme. */
+.ai-workspace {
+  background: var(--bg-deep);
+  color: var(--text);
+}
+
+.ai-session-pane {
+  border-color: var(--line-bright);
+  background: var(--bg-inset);
+}
+
+.ai-session-pane > header,
+.ai-chat-header {
+  border-color: var(--line);
+  background: var(--bg-panel-raised);
+}
+
+.ai-session-pane > header .material-icons,
+.ai-chat-header > div > .material-icons {
+  color: var(--blue-bright);
+}
+
+.ai-session-pane button,
+.ai-chat-header button {
+  border-color: var(--line-bright);
+  background: var(--bg-panel);
+  color: var(--muted);
+}
+
+.ai-session-list > button {
+  background: var(--bg-panel);
+}
+
+.ai-session-list > button:hover {
+  border-color: var(--blue);
+  background: var(--bg-hover);
+}
+
+.ai-session-list > button.active {
+  border-color: var(--blue);
+  background: linear-gradient(90deg, rgba(var(--accent-rgb), .18), var(--bg-panel-raised));
+  box-shadow: inset 3px 0 var(--blue-bright);
+}
+
+.ai-session-list strong,
+.ai-title-copy strong,
+.ai-documentbar strong,
+.ai-chat-header strong,
+.context-grid b,
+.ai-message strong,
+.approval-card strong {
+  color: var(--text);
+}
+
+.ai-session-list small,
+.ai-session-list > p,
+.ai-title-copy small,
+.ai-documentbar small,
+.ai-chat-header small,
+.ai-message p,
+.approval-card p,
+.approval-card > div {
+  color: var(--muted);
+}
+
+.session-mode {
+  color: var(--blue-bright);
+}
+
+.ai-editor-pane {
+  border-color: var(--line-bright);
+  background: var(--bg-inset);
+}
+
+.ai-titlebar {
+  border-color: var(--line);
+  background: radial-gradient(circle at 4% 0, rgba(var(--accent-rgb), .16), transparent 28%), linear-gradient(180deg, var(--bg-panel-raised), var(--bg-panel));
+}
+
+.ai-title-icon {
+  border-color: var(--blue);
+  background: var(--blue-soft);
+  color: var(--blue-bright);
+}
+
+.ai-title-badges span {
+  border-color: var(--line-bright);
+  background: var(--bg-inset);
+  color: var(--muted);
+}
+
+.ai-title-badges i,
+.context-grid i {
+  background: var(--faint);
+}
+
+.ai-controls,
+.ai-documentbar,
+.ai-editor-tabs,
+.ai-editor-footer,
+.ai-context-panel {
+  border-color: var(--line);
+  background: var(--bg-panel);
+}
+
+.ai-controls label,
+.dry-run-control small,
+.empty-xml,
+.ai-editor-footer,
+.ai-context-panel > header,
+.context-grid > span {
+  color: var(--muted);
+}
+
+.ai-controls select {
+  border-color: var(--line-bright);
+  background: var(--bg-inset);
+  color: var(--text);
+}
+
+.ai-controls select option {
+  background: var(--bg-panel);
+  color: var(--text);
+}
+
+.dry-run-control input {
+  accent-color: var(--blue);
+}
+
+.dry-run-control strong {
+  color: var(--blue-bright);
+}
+
+.format-badge {
+  border-color: var(--blue);
+  background: var(--blue-soft);
+  color: var(--blue-bright);
+}
+
+.document-actions button {
+  border-color: var(--line-bright);
+  background: var(--bg-panel-raised);
+  color: var(--muted);
+}
+
+.document-actions button:not(:disabled):hover {
+  border-color: var(--blue);
+  color: var(--blue-bright);
+}
+
+.ai-editor-tabs button {
+  color: var(--muted);
+}
+
+.ai-editor-tabs button.active {
+  color: var(--blue-bright);
+}
+
+.ai-editor-tabs button.active::after {
+  background: var(--blue-bright);
+}
+
+.ai-editor-footer .material-icons {
+  color: var(--green);
+}
+
+.ai-chat-pane {
+  background: linear-gradient(180deg, var(--bg-panel-raised), var(--bg-deep));
+}
+
+.ai-context-panel > header span {
+  color: var(--blue-bright);
+}
+
+.message-avatar {
+  border-color: var(--blue);
+  background: var(--blue-soft);
+  color: var(--blue-bright);
+}
+
+.ai-message.user .message-avatar {
+  border-color: var(--line-bright);
+  background: var(--bg-panel-raised);
+  color: var(--muted);
+}
+
+.ai-suggestions button,
+.approval-card,
+.ai-composer {
+  border-color: var(--line-bright);
+  background: var(--bg-panel);
+  color: var(--muted);
+}
+
+.ai-suggestions button:hover {
+  border-color: var(--blue);
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.ai-stage-card {
+  border-color: var(--blue);
+  background: rgba(var(--accent-rgb), .09);
+}
+
+.ai-stage-card strong {
+  color: var(--blue-bright);
+}
+
+.ai-stage-card span {
+  color: var(--muted);
+}
+
+.ai-stage-card i {
+  border-color: var(--line-bright);
+}
+
+.approval-card > header,
+.approval-card > div,
+.ai-composer footer {
+  border-color: var(--line);
+}
+
+.risk {
+  background: var(--blue-soft);
+  color: var(--blue-bright);
+}
+
+.approval-card button {
+  border-color: var(--line-bright);
+  background: var(--bg-panel-raised);
+  color: var(--text);
+}
+
+.approval-card button.send,
+.ai-composer button {
+  border-color: var(--blue);
+  background: var(--blue);
+  color: #fff;
+}
+
+.ai-composer {
+  box-shadow: 0 8px 24px rgba(var(--accent-rgb), .08);
+}
+
+.ai-composer textarea {
+  color: var(--text);
+}
+
+.ai-composer textarea::placeholder {
+  color: var(--faint);
+}
+
+.ai-composer footer {
+  color: var(--blue-bright);
+}
 </style>

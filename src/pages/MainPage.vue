@@ -4,6 +4,8 @@ import { useNavigationStore } from '../stores/navigation'
 import { useLocaleStore } from '../stores/locale'
 import { useClipboardStore } from '../stores/clipboard'
 import { useEditorStore } from '../stores/editor'
+import { useLibraryStore } from '../stores/library'
+import { useCollectionWorkspaceStore } from '../stores/collectionWorkspace'
 import VertexHeader from '../components/layout/VertexHeader.vue'
 import ClipboardSidebar from '../components/clipboard/ClipboardSidebar.vue'
 import EditorWorkspace from '../components/editor/EditorWorkspace.vue'
@@ -13,13 +15,20 @@ import StatusBar from '../components/layout/StatusBar.vue'
 import ModuleWorkspace from '../components/workspace/ModuleWorkspace.vue'
 import CodexWorkspace from '../components/codex/CodexWorkspace.vue'
 import DocumentationWorkspace from '../components/docs/DocumentationWorkspace.vue'
+import CollectionBrowserWorkspace from '../components/collections/CollectionBrowserWorkspace.vue'
+import RelationshipDesignerWorkspace from '../components/relationship/RelationshipDesignerWorkspace.vue'
+import KnowledgeWorkspace from '../components/knowledge/KnowledgeWorkspace.vue'
 import { useClipboardMonitor } from '../composables/useClipboardMonitor'
 import { formatXmlForDisplay } from '../utils/xmlFormat'
+import { featureAccess } from '../services/featureAccess'
+import { licenseGateway } from '../services/licenseGateway'
 
 const navigation = useNavigationStore()
 const locale = useLocaleStore()
 const clipboard = useClipboardStore()
 const editor = useEditorStore()
+const library = useLibraryStore()
+const collectionWorkspace = useCollectionWorkspaceStore()
 useClipboardMonitor()
 
 const SIDEBAR_MIN = 260
@@ -93,10 +102,23 @@ function handleWindowResize() {
   setSidebarWidth(sidebarWidth.value)
 }
 
+async function refreshLicenseState() {
+  try {
+    featureAccess.applyVerifiedLicense(await licenseGateway.refresh())
+  } catch (error) {
+    console.error('Failed to refresh license state', error)
+  }
+}
+
 window.addEventListener('resize', handleWindowResize)
+window.addEventListener('focus', refreshLicenseState)
+window.addEventListener('vertex:license-changed', refreshLicenseState)
 onMounted(async () => {
   try {
+    featureAccess.applyVerifiedLicense(await licenseGateway.get())
     await clipboard.initialize()
+    await library.initialize()
+    await collectionWorkspace.initialize()
     if (clipboard.selectedItem) {
       const displayXml = formatXmlForDisplay(clipboard.selectedItem.xml)
       editor.content = displayXml
@@ -113,15 +135,19 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   stopSidebarResize()
   window.removeEventListener('resize', handleWindowResize)
+  window.removeEventListener('focus', refreshLicenseState)
+  window.removeEventListener('vertex:license-changed', refreshLicenseState)
 })
 </script>
 
 <template>
+  <!-- Clipboard, collection browser, and editor share one SPA shell. -->
   <div class="vertex-shell" :style="shellStyle">
     <VertexHeader class="app-header" />
-    <template v-if="navigation.active === 'clipboard'">
+    <template v-if="navigation.active === 'clipboard' || navigation.active === 'collections'">
       <ClipboardSidebar class="app-sidebar" />
-      <EditorWorkspace class="app-editor" />
+      <CollectionBrowserWorkspace v-if="navigation.active === 'collections'" class="app-editor" />
+      <EditorWorkspace v-else class="app-editor" />
       <InspectorPanel class="app-inspector" />
       <BottomPanel class="app-bottom" />
       <div
@@ -140,6 +166,8 @@ onBeforeUnmount(() => {
       />
     </template>
     <CodexWorkspace v-else-if="navigation.active === 'codex'" class="app-module" />
+    <KnowledgeWorkspace v-else-if="navigation.active === 'knowledge'" class="app-module" />
+    <RelationshipDesignerWorkspace v-else-if="navigation.active === 'relationship'" class="app-module" />
     <DocumentationWorkspace v-else-if="navigation.active === 'docs'" class="app-module" />
     <ModuleWorkspace v-else class="app-module" :mode="navigation.active" />
     <StatusBar class="app-status" />

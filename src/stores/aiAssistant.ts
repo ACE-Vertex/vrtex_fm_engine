@@ -2,6 +2,7 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { aiGateway } from '../services/aiGateway'
 import { useSettingsStore } from './settings'
+import { useRelationshipDesignerStore } from './relationshipDesigner'
 import type {
   AiMessage,
   AiMode,
@@ -15,6 +16,7 @@ const PROJECT_ID = 'VertexProject'
 
 export const useAiAssistantStore = defineStore('aiAssistant', () => {
   const settings = useSettingsStore()
+  const relationshipDesigner = useRelationshipDesignerStore()
   const sessions = ref<AiSession[]>([])
   const activeSession = ref<AiSession | null>(null)
   const messages = ref<AiMessage[]>([])
@@ -142,9 +144,11 @@ export const useAiAssistantStore = defineStore('aiAssistant', () => {
       })
       messages.value.push(assistantMessage)
       generatedXml.value = extractXml(response.content)
+      const generatedCards = relationshipDesigner.addComponentCardsFromAiResponse(response.content)
       riskLevel.value = assessRisk(content, generatedXml.value)
       validationStatus.value = generatedXml.value ? 'pending' : 'pass'
       stages.value.push(generatedXml.value ? 'XMLを抽出しました' : '設計回答を受信しました')
+      if (generatedCards.length) stages.value.push(`${generatedCards.length}件のComponent Cardを生成しました`)
 
       activeSession.value = await aiGateway.updateSession(session.id, {
         mode: mode.value,

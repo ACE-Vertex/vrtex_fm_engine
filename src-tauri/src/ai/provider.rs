@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use super::CredentialStore;
 
-type ProviderFuture<'a> =
+pub type ProviderFuture<'a> =
     Pin<Box<dyn Future<Output = Result<AiProviderResponse, String>> + Send + 'a>>;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -18,6 +18,8 @@ pub struct AiProviderRequest {
     pub dry_run: bool,
     pub format: Option<String>,
     pub current_xml: Option<String>,
+    pub current_design: Option<String>,
+    pub response_schema: Option<serde_json::Value>,
     #[serde(default)]
     pub rag_context: Vec<String>,
     pub user_prompt: String,
@@ -51,26 +53,42 @@ pub struct AiConnectionTest {
     pub request_id: Option<String>,
 }
 
-trait AiProvider: Send + Sync {
+pub trait AiProvider: Send + Sync {
+    fn id(&self) -> &'static str;
     fn send<'a>(&'a self, request: &'a AiProviderRequest, prompt: String) -> ProviderFuture<'a>;
 }
 
-struct OpenAiProvider {
+pub struct OpenAiProvider {
     api_key: String,
 }
 
 impl AiProvider for OpenAiProvider {
+    fn id(&self) -> &'static str {
+        "openai"
+    }
+
     fn send<'a>(&'a self, request: &'a AiProviderRequest, prompt: String) -> ProviderFuture<'a> {
         Box::pin(async move {
             let client = reqwest::Client::new();
+            let mut body = serde_json::json!({
+                "model": request.model,
+                "input": prompt,
+                "store": false
+            });
+            if let Some(schema) = &request.response_schema {
+                body["text"] = serde_json::json!({
+                    "format": {
+                        "type": "json_schema",
+                        "name": "vrtex_relationship_design",
+                        "strict": false,
+                        "schema": schema
+                    }
+                });
+            }
             let response = client
                 .post("https://api.openai.com/v1/responses")
                 .bearer_auth(&self.api_key)
-                .json(&serde_json::json!({
-                    "model": request.model,
-                    "input": prompt,
-                    "store": false
-                }))
+                .json(&body)
                 .send()
                 .await
                 .map_err(|error| format!("OpenAI connection failed: {error}"))?;
@@ -139,13 +157,21 @@ pub async fn run_provider(
     prompt: String,
     credentials: &CredentialStore,
 ) -> Result<AiProviderResponse, String> {
+    let provider = create_provider(request, credentials)?;
+    provider.send(request, prompt).await
+}
+
+pub fn create_provider(
+    request: &AiProviderRequest,
+    credentials: &CredentialStore,
+) -> Result<Box<dyn AiProvider>, String> {
     match request.provider.as_str() {
         "openai" => {
             let api_key = credentials
                 .resolve_openai_key()?
                 .map(|(key, _)| key)
                 .ok_or_else(|| "OpenAI APIキーが設定されていません。設定 > Codex連携から登録してください。".to_owned())?;
-            OpenAiProvider { api_key }.send(request, prompt).await
+            Ok(Box::new(OpenAiProvider { api_key }))
         }
         "codex" => Err(
             "Codex App Server transport is not connected yet. Select OpenAI or continue with Dry Run tools."
@@ -267,5 +293,17 @@ mod tests {
         assert!(!sanitized.contains("test"));
         assert!(!sanitized.contains("use"));
         assert!(sanitized.contains("[APIキーは非表示]"));
+    }
+
+    #[test]
+    fn structured_request_fields_deserialize() {
+        let request: AiProviderRequest = serde_json::from_value(serde_json::json!({
+            "provider": "openai", "model": "gpt-5", "projectId": "p", "mode": "DESIGN",
+            "dryRun": true, "ragContext": [], "userPrompt": "design",
+            "currentDesign": "{}", "responseSchema": {"type": "object"}
+        }))
+        .unwrap();
+        assert!(request.current_design.is_some());
+        assert!(request.response_schema.is_some());
     }
 }

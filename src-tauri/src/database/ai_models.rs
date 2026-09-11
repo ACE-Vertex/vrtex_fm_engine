@@ -72,7 +72,7 @@ pub struct UpdateAiSession {
     pub validation_status: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RagDocument {
     pub id: String,
@@ -81,6 +81,25 @@ pub struct RagDocument {
     pub source_type: String,
     pub tags: String,
     pub score: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiWorkspaceData {
+    pub sessions: Vec<AiSession>,
+    pub messages: Vec<AiMessage>,
+    pub rag_documents: Vec<RagDocument>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveRagDocument {
+    pub id: Option<String>,
+    pub title: String,
+    pub content: String,
+    pub source_type: String,
+    #[serde(default)]
+    pub tags: String,
 }
 
 fn default_true() -> bool {

@@ -2,7 +2,9 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useNavigationStore, type WorkspaceMode } from '../../stores/navigation'
 import { useLocaleStore } from '../../stores/locale'
-import { isTauriRuntime, nativeGateway, type FileMakerStatus } from '../../services/nativeGateway'
+import { isTauriRuntime, nativeGateway, type FileMakerStatus, type UpdateCheck } from '../../services/nativeGateway'
+import { featureAccess, type FeatureId } from '../../services/featureAccess'
+import KnowledgeBrainIcon from '../icons/KnowledgeBrainIcon.vue'
 
 // Keep Codex next to the development utilities: Collections → Codex → Tools.
 const navigation = [
@@ -10,16 +12,24 @@ const navigation = [
   { id: 'library', label: 'navLibrary', icon: 'library_books' },
   { id: 'collections', label: 'navCollections', icon: 'account_tree' },
   { id: 'codex', label: 'navCodex', icon: 'smart_toy' },
+  { id: 'knowledge', label: 'navKnowledge', icon: 'psychology', feature: 'knowledgePackEngine', pro: true },
+  { id: 'relationship', label: 'navRelationshipDesigner', icon: 'hub', feature: 'relationshipDesigner', pro: true },
   { id: 'tools', label: 'navTools', icon: 'construction' },
   { id: 'settings', label: 'navSettings', icon: 'settings' },
   { id: 'docs', label: 'navDocs', icon: 'menu_book' },
 ] as const
+const visibleNavigation = computed(() => navigation.filter((item) =>
+  ('pro' in item && item.pro) || !('feature' in item) || featureAccess.can(item.feature as FeatureId),
+))
 const navigationStore = useNavigationStore()
 const locale = useLocaleStore()
 const appVersion = ref('0.1.0')
 const distributionRepository = 'ACE-FRDS/vrtex_fm_engine'
 const distributionRepositoryUrl = `https://github.com/${distributionRepository}`
 const updatePanelOpen = ref(false)
+const updateChecking = ref(false)
+const updateCheck = ref<UpdateCheck | null>(null)
+const updateCheckError = ref('')
 const lastSeenUpdateVersion = ref(localStorage.getItem('vertex.lastSeenUpdateVersion') ?? '')
 const updateUnread = computed(() => lastSeenUpdateVersion.value !== appVersion.value)
 const runtimeChannel = computed(() =>
@@ -61,7 +71,32 @@ function markUpdateInformationRead() {
 
 function toggleUpdatePanel() {
   updatePanelOpen.value = !updatePanelOpen.value
-  if (updatePanelOpen.value) markUpdateInformationRead()
+  if (updatePanelOpen.value) {
+    markUpdateInformationRead()
+    if (!updateCheck.value && !updateCheckError.value) void checkUpdates()
+  }
+}
+
+async function checkUpdates() {
+  if (updateChecking.value) return
+  updateChecking.value = true
+  updateCheckError.value = ''
+  try {
+    updateCheck.value = isTauriRuntime()
+      ? await nativeGateway.checkForUpdates(appVersion.value)
+      : {
+          currentVersion: appVersion.value,
+          latestVersion: appVersion.value,
+          updateAvailable: false,
+          releaseUrl: distributionRepositoryUrl,
+          publishedAt: null,
+          notes: '',
+        }
+  } catch (error) {
+    updateCheckError.value = error instanceof Error ? error.message : String(error)
+  } finally {
+    updateChecking.value = false
+  }
 }
 
 function closeUpdatePanel() {
@@ -105,7 +140,7 @@ onBeforeUnmount(() => {
 
     <nav class="top-navigation" aria-label="Primary navigation">
       <button
-        v-for="item in navigation"
+        v-for="item in visibleNavigation"
         :key="item.id"
         class="nav-item"
         :class="{ active: navigationStore.active === item.id }"
@@ -113,8 +148,10 @@ onBeforeUnmount(() => {
         :aria-pressed="navigationStore.active === item.id"
         @click="navigationStore.setActive(item.id as WorkspaceMode)"
       >
-        <span class="material-icons">{{ item.icon }}</span>
+        <KnowledgeBrainIcon v-if="item.id === 'knowledge'" class="nav-svg-icon" />
+        <span v-else class="material-icons">{{ item.icon }}</span>
         <span class="nav-label">{{ locale.t(item.label) }}</span>
+        <span v-if="'pro' in item && item.pro" class="nav-pro-badge">PRO</span>
       </button>
     </nav>
 
@@ -164,13 +201,19 @@ onBeforeUnmount(() => {
               </div>
             </div>
 
-            <div class="update-status-card">
-              <span class="material-icons">info</span>
+            <div class="update-status-card" :class="{ available: updateCheck?.updateAvailable, error: updateCheckError }">
+              <span class="material-icons">{{ updateChecking ? 'sync' : updateCheckError ? 'cloud_off' : updateCheck?.updateAvailable ? 'system_update_alt' : 'verified' }}</span>
               <div>
-                <strong>{{ locale.t('updateEndpointMissing') }}</strong>
-                <p>{{ locale.t('updateEndpointHelp') }}</p>
+                <strong v-if="updateChecking">{{ locale.language === 'ja' ? '更新情報を確認しています…' : 'Checking for updates…' }}</strong>
+                <strong v-else-if="updateCheckError">{{ locale.language === 'ja' ? '更新確認に失敗しました' : 'Update check failed' }}</strong>
+                <strong v-else-if="updateCheck?.updateAvailable">{{ locale.language === 'ja' ? `新しいバージョン ${updateCheck.latestVersion} があります` : `Version ${updateCheck.latestVersion} is available` }}</strong>
+                <strong v-else>{{ locale.language === 'ja' ? '最新バージョンです' : 'You are up to date' }}</strong>
+                <p>{{ updateCheckError || (updateCheck?.updateAvailable ? (locale.language === 'ja' ? 'GitHub Releaseからインストーラーを取得できます。' : 'Download the installer from GitHub Releases.') : (locale.language === 'ja' ? 'GitHub Releasesの最新情報を確認しました。' : 'Checked the latest GitHub Release.')) }}</p>
               </div>
+              <button type="button" :disabled="updateChecking" :aria-label="locale.language === 'ja' ? '更新を再確認' : 'Check again'" @click="checkUpdates"><span class="material-icons">refresh</span></button>
             </div>
+
+            <a v-if="updateCheck?.updateAvailable" class="update-download-link" :href="updateCheck.releaseUrl" target="_blank" rel="noopener noreferrer"><span class="material-icons">download</span>{{ locale.language === 'ja' ? 'GitHub Releaseを開く' : 'Open GitHub Release' }}</a>
 
             <a
               class="distribution-repository"
@@ -183,7 +226,7 @@ onBeforeUnmount(() => {
                 <small>{{ locale.t('distributionRepository') }}</small>
                 <strong>{{ distributionRepository }}</strong>
               </span>
-              <span class="distribution-planned">{{ locale.t('planned') }}</span>
+              <span class="distribution-planned">Private</span>
             </a>
 
             <div class="recent-update-list">

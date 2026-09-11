@@ -5,16 +5,10 @@ import { isTauriRuntime, nativeGateway } from '../services/nativeGateway'
 import { useClipboardStore } from '../stores/clipboard'
 import { useLocaleStore } from '../stores/locale'
 import { useSettingsStore } from '../stores/settings'
+import { useCollectionWorkspaceStore } from '../stores/collectionWorkspace'
+import { clipboardItemName } from '../utils/clipboardItemNaming'
 
 const POLLING_INTERVAL_MS = 1_500
-
-function itemName(xml: string, objectType: string) {
-  const document = new DOMParser().parseFromString(xml, 'application/xml')
-  const named = document.querySelector(
-    'Script[name], Step[name], BaseTable[name], Table[name], Field[name], Layout[name], CustomFunction[name], Function[name], Theme[name]',
-  )
-  return named?.getAttribute('name')?.trim() || `${objectType} ${new Date().toLocaleString()}`
-}
 
 function isClipboardUnavailable(error: unknown) {
   return /not available|no registered Mac-XM|OpenClipboard/i.test(String(error))
@@ -25,6 +19,7 @@ export function useClipboardMonitor() {
   const clipboard = useClipboardStore()
   const locale = useLocaleStore()
   const settings = useSettingsStore()
+  const collectionWorkspace = useCollectionWorkspaceStore()
   let timer: number | undefined
   let polling = false
   let lastFingerprint = ''
@@ -57,7 +52,11 @@ export function useClipboardMonitor() {
       const detected = await nativeGateway.detectFormat(payload.xml)
       const format = detected.format === 'UNKNOWN' ? payload.format : detected.format
       const saved = await clipboard.upsert({
-        name: itemName(payload.xml, detected.objectType),
+        name: clipboardItemName(
+          payload.xml,
+          detected.objectType,
+          [...clipboard.items, ...clipboard.libraryItems],
+        ),
         format,
         windowsFormat: payload.windowsFormat,
         objectType: detected.objectType,
@@ -66,6 +65,7 @@ export function useClipboardMonitor() {
         favorite: false,
         inLibrary: false,
       }, { select: false })
+      await collectionWorkspace.assignItemToProject(saved.id)
 
       lastFingerprint = fingerprint
       lastError = ''

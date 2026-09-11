@@ -207,3 +207,181 @@ watch(filteredSections, (items) => {
     </div>
   </main>
 </template>
+
+<style scoped>
+.docs-workspace {
+  background:
+    radial-gradient(circle at 14% -10%, rgba(var(--accent-rgb), .15), transparent 34%),
+    linear-gradient(135deg, var(--bg-panel), var(--bg-deep) 64%, var(--bg-inset));
+  color: var(--text);
+}
+
+.docs-header {
+  border-color: var(--line-bright);
+  background: linear-gradient(90deg, rgba(var(--accent-rgb), .2), transparent 58%);
+}
+
+.docs-header-icon {
+  border-color: var(--blue);
+  background: linear-gradient(145deg, var(--blue-soft), var(--bg-inset));
+  color: var(--blue-bright);
+  box-shadow: 0 8px 25px rgba(var(--accent-rgb), .16);
+}
+
+.docs-header-eyebrow,
+.docs-version strong {
+  color: var(--blue-bright);
+}
+
+.docs-header h1 {
+  color: var(--text);
+}
+
+.docs-header p {
+  color: var(--muted);
+}
+
+.docs-version {
+  border-color: var(--line-bright);
+  background: var(--bg-inset);
+  color: var(--muted);
+}
+
+.docs-layout {
+  background: var(--bg-deep);
+}
+
+.docs-sidebar {
+  border-color: var(--line-bright);
+  background: linear-gradient(180deg, var(--bg-panel-raised), var(--bg-inset));
+}
+
+.docs-search {
+  border-color: var(--line-bright);
+  background: var(--bg-inset);
+}
+
+.docs-search:focus-within {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 2px rgba(var(--accent-rgb), .1);
+}
+
+.docs-search .material-icons {
+  color: var(--muted);
+}
+
+.docs-search input {
+  color: var(--text);
+}
+
+.docs-search input::placeholder {
+  color: var(--faint);
+}
+
+.docs-contents-label {
+  color: var(--blue-bright);
+}
+
+.docs-sidebar nav button {
+  color: var(--muted);
+}
+
+.docs-sidebar nav button:hover {
+  border-color: var(--line-bright);
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.docs-sidebar nav button > .material-icons:first-child {
+  color: var(--muted);
+}
+
+.docs-sidebar nav button .arrow {
+  color: var(--faint);
+}
+
+.docs-sidebar nav button.active {
+  border-color: var(--blue);
+  background: linear-gradient(90deg, rgba(var(--accent-rgb), .2), var(--bg-panel-raised));
+  color: var(--text);
+  box-shadow: inset 2px 0 var(--blue-bright);
+}
+
+.docs-sidebar nav button.active > .material-icons:first-child,
+.docs-sidebar nav button.active .arrow {
+  color: var(--blue-bright);
+}
+
+.docs-no-results {
+  color: var(--muted);
+}
+
+.docs-article {
+  background: radial-gradient(circle at 12% 0, rgba(var(--accent-rgb), .06), transparent 32%);
+}
+
+.docs-article > header {
+  border-color: var(--line-bright);
+}
+
+.docs-article > header > div {
+  border-color: var(--blue);
+  background: var(--blue-soft);
+  color: var(--blue-bright);
+}
+
+.docs-article > header > span {
+  color: var(--blue-bright);
+}
+
+.docs-article h2,
+.docs-section h3 {
+  color: var(--text);
+}
+
+.docs-article > header p,
+.docs-section > p,
+.docs-section ul li,
+.docs-section ol p {
+  color: var(--muted);
+}
+
+.docs-section h3::before {
+  background: var(--blue-bright);
+  box-shadow: 0 0 8px rgba(var(--accent-rgb), .3);
+}
+
+.docs-section ul .material-icons {
+  color: var(--green);
+}
+
+.docs-section ol li {
+  border-color: var(--line-bright);
+  background: var(--bg-panel-raised);
+}
+
+.docs-section ol li > span {
+  border-color: var(--blue);
+  background: var(--blue-soft);
+  color: var(--blue-bright);
+}
+
+.docs-note {
+  border-color: var(--line-bright);
+  border-left-color: var(--blue);
+  background: rgba(var(--accent-rgb), .09);
+}
+
+.docs-note .material-icons {
+  color: var(--blue-bright);
+}
+
+.docs-note p {
+  color: var(--muted);
+}
+
+.docs-article > footer {
+  border-color: var(--line);
+  color: var(--faint);
+}
+</style>

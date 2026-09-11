@@ -1,5 +1,9 @@
 pub mod ai;
 pub mod clipboard;
+pub mod knowledge;
 pub mod library;
+pub mod license;
 pub mod system;
+pub mod update;
+pub mod workspace;
 pub mod xml;

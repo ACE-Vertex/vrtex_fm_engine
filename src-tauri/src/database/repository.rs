@@ -10,7 +10,7 @@ pub fn list_history(connection: &Connection, limit: usize) -> Result<Vec<Clipboa
         "SELECT id, name, format, windows_format, object_type, xml, checksum,
                 filemaker_version, notes, favorite, saved_to_library, in_history, created_at, updated_at, last_used_at
          FROM clipboard_items
-         WHERE in_history = 1
+         WHERE in_history = 1 OR favorite = 1
          ORDER BY last_used_at DESC
          LIMIT ?1",
     )?;
@@ -137,10 +137,18 @@ pub fn delete(connection: &Connection, id: &str) -> Result<bool> {
 
 pub fn update_favorite(connection: &Connection, id: &str, favorite: bool) -> Result<bool> {
     let now = Utc::now().to_rfc3339();
-    Ok(connection.execute(
+    let updated = connection.execute(
         "UPDATE clipboard_items SET favorite = ?2, updated_at = ?3 WHERE id = ?1",
         params![id, favorite, now],
-    )? > 0)
+    )? > 0;
+    if updated && !favorite {
+        connection.execute(
+            "DELETE FROM clipboard_items
+             WHERE id = ?1 AND favorite = 0 AND saved_to_library = 0 AND in_history = 0",
+            [id],
+        )?;
+    }
+    Ok(updated)
 }
 
 pub fn update_notes(connection: &Connection, id: &str, notes: &str) -> Result<bool> {
@@ -154,11 +162,13 @@ pub fn update_notes(connection: &Connection, id: &str, notes: &str) -> Result<bo
 pub fn clear_clipboard(connection: &mut Connection) -> Result<usize> {
     let transaction = connection.transaction()?;
     let hidden = transaction.execute(
-        "UPDATE clipboard_items SET in_history = 0, updated_at = ?1 WHERE in_history = 1 AND saved_to_library = 1",
+        "UPDATE clipboard_items SET in_history = 0, updated_at = ?1
+         WHERE in_history = 1 AND (saved_to_library = 1 OR favorite = 1)",
         [Utc::now().to_rfc3339()],
     )?;
     let deleted = transaction.execute(
-        "DELETE FROM clipboard_items WHERE in_history = 1 AND saved_to_library = 0",
+        "DELETE FROM clipboard_items
+         WHERE in_history = 1 AND saved_to_library = 0 AND favorite = 0",
         [],
     )?;
     transaction.commit()?;
@@ -176,7 +186,8 @@ pub fn clear_library(connection: &mut Connection) -> Result<usize> {
         [Utc::now().to_rfc3339()],
     )?;
     let removed_orphans = transaction.execute(
-        "DELETE FROM clipboard_items WHERE saved_to_library = 0 AND in_history = 0",
+        "DELETE FROM clipboard_items
+         WHERE saved_to_library = 0 AND in_history = 0 AND favorite = 0",
         [],
     )?;
     transaction.commit()?;
@@ -250,7 +261,7 @@ mod tests {
     }
 
     #[test]
-    fn updates_item_metadata_and_clears_persisted_data() {
+    fn clearing_history_preserves_favorites_until_they_are_unfavorited() {
         let mut connection = Connection::open_in_memory().unwrap();
         crate::database::migrations::run(&connection).unwrap();
         let item = save(&connection, sample()).unwrap();
@@ -262,6 +273,24 @@ mod tests {
         assert_eq!(updated.notes, "reviewed");
 
         assert_eq!(clear_clipboard(&mut connection).unwrap(), 1);
+        let favorites = list_history(&connection, 20).unwrap();
+        assert_eq!(favorites.len(), 1);
+        assert!(favorites[0].favorite);
+        assert!(!favorites[0].in_history);
+
+        assert!(update_favorite(&connection, &item.id, false).unwrap());
+        assert!(load(&connection, &item.id).unwrap().is_none());
+        assert!(list_history(&connection, 20).unwrap().is_empty());
+    }
+
+    #[test]
+    fn clearing_history_deletes_items_without_favorite_or_library_protection() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        crate::database::migrations::run(&connection).unwrap();
+        let item = save(&connection, sample()).unwrap();
+
+        assert_eq!(clear_clipboard(&mut connection).unwrap(), 1);
+        assert!(load(&connection, &item.id).unwrap().is_none());
         assert!(list_history(&connection, 20).unwrap().is_empty());
     }
 }

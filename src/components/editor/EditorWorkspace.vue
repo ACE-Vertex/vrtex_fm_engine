@@ -4,6 +4,7 @@ import { useQuasar } from 'quasar'
 import { useClipboardStore } from '../../stores/clipboard'
 import { useEditorStore, type EditorTab } from '../../stores/editor'
 import { useLocaleStore } from '../../stores/locale'
+import { useCollectionWorkspaceStore } from '../../stores/collectionWorkspace'
 import { formatXmlForDisplay } from '../../utils/xmlFormat'
 import XmlEditor from './XmlEditor.vue'
 import ScriptPreview from './ScriptPreview.vue'
@@ -14,6 +15,7 @@ const $q = useQuasar()
 const clipboard = useClipboardStore()
 const editor = useEditorStore()
 const locale = useLocaleStore()
+const collectionWorkspace = useCollectionWorkspaceStore()
 
 const tabs = computed<{ id: EditorTab; label: string; icon: string }[]>(() => [
   { id: 'xml', label: 'XML', icon: 'code' },
@@ -56,6 +58,13 @@ function formatDocument() {
           <strong>{{ item?.name ?? locale.t('untitled') }}</strong>
           <span>{{ editor.modified ? locale.t('modified') : locale.t('saved') }}</span>
         </div>
+      </div>
+      <div v-if="collectionWorkspace.selectedProject" class="active-collection-project" :title="collectionWorkspace.selectedProject.name">
+        <span class="material-icons">folder_open</span>
+        <span>
+          <small>{{ locale.language === 'ja' ? '選択中のProject' : 'Selected Project' }}</small>
+          <strong>{{ collectionWorkspace.selectedProject.name }}</strong>
+        </span>
       </div>
       <div class="document-actions">
         <q-btn flat dense icon="search" :aria-label="locale.t('search')"><q-tooltip>{{ locale.t('search') }}</q-tooltip></q-btn>

@@ -3,9 +3,146 @@ use rusqlite::{params, Connection, OptionalExtension, Result};
 use uuid::Uuid;
 
 use super::ai_models::{
-    AiMessage, AiSession, AiSessionDetail, CreateAiSession, RagDocument, SaveAiMessage,
-    UpdateAiSession,
+    AiMessage, AiSession, AiSessionDetail, AiWorkspaceData, CreateAiSession, RagDocument,
+    SaveAiMessage, SaveRagDocument, UpdateAiSession,
 };
+
+pub fn export_workspace(connection: &Connection) -> Result<AiWorkspaceData> {
+    let mut session_statement = connection.prepare(
+        "SELECT id, project_id, title, mode, provider, model, dry_run, risk_level,
+                status, generated_xml, validation_status, created_at, updated_at
+         FROM ai_sessions ORDER BY updated_at DESC",
+    )?;
+    let sessions = session_statement
+        .query_map([], map_session)?
+        .collect::<Result<Vec<_>>>()?;
+    let mut message_statement = connection.prepare(
+        "SELECT id, session_id, role, content, metadata, created_at
+         FROM ai_messages ORDER BY created_at ASC",
+    )?;
+    let messages = message_statement
+        .query_map([], map_message)?
+        .collect::<Result<Vec<_>>>()?;
+    Ok(AiWorkspaceData {
+        sessions,
+        messages,
+        rag_documents: list_rag_documents(connection, usize::MAX)?,
+    })
+}
+
+pub fn import_workspace(connection: &mut Connection, workspace: AiWorkspaceData) -> Result<()> {
+    let transaction = connection.transaction()?;
+    transaction.execute("DELETE FROM ai_messages", [])?;
+    transaction.execute("DELETE FROM ai_sessions", [])?;
+    transaction.execute("DELETE FROM rag_documents", [])?;
+    for session in workspace.sessions {
+        transaction.execute(
+            "INSERT INTO ai_sessions (
+               id, project_id, title, mode, provider, model, dry_run, risk_level,
+               status, generated_xml, validation_status, created_at, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            params![
+                session.id,
+                session.project_id,
+                session.title,
+                session.mode,
+                session.provider,
+                session.model,
+                session.dry_run,
+                session.risk_level,
+                session.status,
+                session.generated_xml,
+                session.validation_status,
+                session.created_at,
+                session.updated_at,
+            ],
+        )?;
+    }
+    for message in workspace.messages {
+        transaction.execute(
+            "INSERT INTO ai_messages (id, session_id, role, content, metadata, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                message.id,
+                message.session_id,
+                message.role,
+                message.content,
+                message.metadata,
+                message.created_at,
+            ],
+        )?;
+    }
+    let now = Utc::now().to_rfc3339();
+    for document in workspace.rag_documents {
+        transaction.execute(
+            "INSERT INTO rag_documents (id, title, content, source_type, tags, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)",
+            params![document.id, document.title, document.content, document.source_type, document.tags, now],
+        )?;
+    }
+    transaction.commit()
+}
+
+pub fn list_rag_documents(connection: &Connection, limit: usize) -> Result<Vec<RagDocument>> {
+    let mut statement = connection.prepare(
+        "SELECT id, title, content, source_type, tags
+         FROM rag_documents ORDER BY updated_at DESC LIMIT ?1",
+    )?;
+    let documents = statement
+        .query_map([limit as i64], |row| {
+            Ok(RagDocument {
+                id: row.get(0)?,
+                title: row.get(1)?,
+                content: row.get(2)?,
+                source_type: row.get(3)?,
+                tags: row.get(4)?,
+                score: 0,
+            })
+        })?
+        .collect();
+    documents
+}
+
+pub fn save_rag_document(connection: &Connection, input: SaveRagDocument) -> Result<RagDocument> {
+    let id = input.id.unwrap_or_else(|| Uuid::new_v4().to_string());
+    let now = Utc::now().to_rfc3339();
+    connection.execute(
+        "INSERT INTO rag_documents (id, title, content, source_type, tags, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)
+         ON CONFLICT(id) DO UPDATE SET
+           title = excluded.title,
+           content = excluded.content,
+           source_type = excluded.source_type,
+           tags = excluded.tags,
+           updated_at = excluded.updated_at",
+        params![
+            id,
+            input.title,
+            input.content,
+            input.source_type,
+            input.tags,
+            now
+        ],
+    )?;
+    connection.query_row(
+        "SELECT id, title, content, source_type, tags FROM rag_documents WHERE id = ?1",
+        [id],
+        |row| {
+            Ok(RagDocument {
+                id: row.get(0)?,
+                title: row.get(1)?,
+                content: row.get(2)?,
+                source_type: row.get(3)?,
+                tags: row.get(4)?,
+                score: 0,
+            })
+        },
+    )
+}
+
+pub fn delete_rag_document(connection: &Connection, id: &str) -> Result<bool> {
+    Ok(connection.execute("DELETE FROM rag_documents WHERE id = ?1", [id])? > 0)
+}
 
 pub fn list_sessions(
     connection: &Connection,
@@ -274,5 +411,13 @@ mod tests {
             .unwrap()
             .iter()
             .any(|document| document.tags.to_lowercase().contains("xmsc")));
+
+        let workspace = export_workspace(&connection).unwrap();
+        let mut restored = Connection::open_in_memory().unwrap();
+        crate::database::migrations::run(&restored).unwrap();
+        import_workspace(&mut restored, workspace).unwrap();
+        let restored_detail = load_detail(&restored, &session.id).unwrap().unwrap();
+        assert_eq!(restored_detail.messages.len(), 1);
+        assert!(!list_rag_documents(&restored, 20).unwrap().is_empty());
     }
 }
