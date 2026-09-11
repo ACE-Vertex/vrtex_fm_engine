@@ -78,6 +78,8 @@ export interface AiProviderRequest {
   dryRun: boolean
   format?: string
   currentXml?: string
+  currentDesign?: string
+  responseSchema?: Record<string, unknown>
   ragContext: string[]
   userPrompt: string
 }

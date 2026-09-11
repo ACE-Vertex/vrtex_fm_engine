@@ -11,8 +11,9 @@
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
     "check": "pnpm run build",
+    "test": "vitest run",
     "test:native": "cargo test --manifest-path src-tauri/Cargo.toml",
-    "verify": "pnpm run build && pnpm run test:native",
+    "verify": "pnpm run test && pnpm run build && pnpm run test:native",
     "preview": "vite preview",
     "tauri": "tauri"
   },
@@ -20,6 +21,7 @@
     "@quasar/extras": "^1.16.17",
     "@tauri-apps/api": "^2.8.0",
     "@tauri-apps/plugin-dialog": "^2.7.2",
+    "ajv": "^8.17.1",
     "monaco-editor": "^0.52.2",
     "pinia": "^3.0.3",
     "quasar": "^2.18.2",
@@ -31,6 +33,7 @@
     "sass-embedded": "^1.90.0",
     "typescript": "~5.8.3",
     "vite": "^7.1.2",
+    "vitest": "^3.2.4",
     "vue-tsc": "^3.0.5"
   }
 }

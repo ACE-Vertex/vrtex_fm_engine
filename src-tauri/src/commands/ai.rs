@@ -1,8 +1,9 @@
 use tauri::State;
 
 use crate::ai::{
-    build_prompt, provider_status, run_provider, test_provider_connection, AiConnectionTest,
-    AiProviderRequest, AiProviderResponse, AiProviderStatus,
+    build_prompt, build_relationship_design_prompt, provider_status, run_provider,
+    test_provider_connection, AiConnectionTest, AiProviderRequest, AiProviderResponse,
+    AiProviderStatus,
 };
 use crate::database::ai_models::{
     AiMessage, AiSession, AiSessionDetail, AiWorkspaceData, CreateAiSession, RagDocument,
@@ -171,5 +172,20 @@ pub async fn run_ai_assistant(
     request: AiProviderRequest,
 ) -> Result<AiProviderResponse, String> {
     let prompt = build_prompt(&request);
+    run_provider(&request, prompt, &state.credentials).await
+}
+
+#[tauri::command]
+pub async fn run_ai_relationship_design(
+    state: State<'_, AppState>,
+    request: AiProviderRequest,
+) -> Result<AiProviderResponse, String> {
+    if request.current_design.as_deref().unwrap_or("").len() > 4 * 1024 * 1024 {
+        return Err("Current relationship design exceeds the 4 MB AI request limit".to_owned());
+    }
+    if request.response_schema.is_none() {
+        return Err("Relationship design requires a JSON response schema".to_owned());
+    }
+    let prompt = build_relationship_design_prompt(&request);
     run_provider(&request, prompt, &state.credentials).await
 }

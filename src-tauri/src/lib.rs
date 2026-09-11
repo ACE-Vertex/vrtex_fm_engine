@@ -53,6 +53,7 @@ pub fn run() {
             commands::ai::delete_openai_api_key,
             commands::ai::test_ai_provider_connection,
             commands::ai::run_ai_assistant,
+            commands::ai::run_ai_relationship_design,
             commands::knowledge::list_knowledge_packs,
             commands::knowledge::load_knowledge_pack,
             commands::knowledge::save_knowledge_pack,

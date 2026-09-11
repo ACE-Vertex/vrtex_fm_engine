@@ -28,6 +28,8 @@ export const useRelationshipDesignerStore = defineStore('relationshipDesigner', 
   const dirty = ref(false)
   const sourceJson = ref('')
   const selectedComponentCardId = ref('')
+  const lastProposalSnapshot = ref<DesignProjectSnapshot | null>(null)
+  const lastProposalWasDirty = ref(false)
 
   const selectedOccurrence = computed(() => {
     const selectedId = project.value?.canvasState.selectedOccurrenceIds[0]
@@ -62,6 +64,36 @@ export const useRelationshipDesignerStore = defineStore('relationshipDesigner', 
       dirty.value = false
     }
     return result
+  }
+
+  function previewAiDesign(input: string | unknown): DesignParseResult {
+    featureAccess.require('relationshipDesigner')
+    return parseAiDesign(input)
+  }
+
+  function applyAiProposal(input: string | unknown): DesignParseResult {
+    featureAccess.require('relationshipDesigner')
+    const result = parseAiDesign(input)
+    if (!result.project || !result.validation.valid) return result
+    lastProposalSnapshot.value = createSnapshot()
+    lastProposalWasDirty.value = dirty.value
+    project.value = result.project
+    project.value.componentCards = generateComponentCards(project.value)
+    validation.value = validateDesignProject(project.value)
+    sourceJson.value = typeof input === 'string' ? input : JSON.stringify(input, null, 2)
+    dirty.value = true
+    return { project: project.value, validation: validation.value }
+  }
+
+  function undoLastAiProposal() {
+    const snapshot = lastProposalSnapshot.value
+    if (!snapshot) return false
+    const wasDirty = lastProposalWasDirty.value
+    const result = restoreSnapshot(snapshot)
+    if (!result.project) return false
+    dirty.value = wasDirty
+    lastProposalSnapshot.value = null
+    return true
   }
 
   function revalidate() {
@@ -356,12 +388,16 @@ export const useRelationshipDesignerStore = defineStore('relationshipDesigner', 
     validation,
     dirty,
     sourceJson,
+    lastProposalSnapshot,
     selectedOccurrence,
     selectedRelationship,
     selectedComponentCardId,
     selectedComponentCard,
     newProject,
     loadAiDesign,
+    previewAiDesign,
+    applyAiProposal,
+    undoLastAiProposal,
     revalidate,
     regenerateComponentCards,
     addComponentCardsFromAiResponse,

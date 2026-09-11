@@ -1,4 +1,5 @@
 import { isKnownRelationshipOperator } from './relationshipOperators'
+import { analyzeDesignGraph, findDependencyCycles } from './graphAnalyzer'
 import type {
   DesignEntityId,
   DesignField,
@@ -51,7 +52,7 @@ export function validateDesignProject(project: DesignProject): DesignValidationR
     const normalizedName = occurrence.name.trim().toLocaleLowerCase()
     const previousId = occurrenceNames.get(normalizedName)
     if (normalizedName && previousId) {
-      issues.push(issue('error', 'TABLE_OCCURRENCE_NAME_DUPLICATE', `Table occurrence name "${occurrence.name}" is duplicated`, `${occurrencePath}.name`, occurrence.id))
+      issues.push(issue('warning', 'TABLE_OCCURRENCE_NAME_DUPLICATE', `Table occurrence name "${occurrence.name}" is duplicated`, `${occurrencePath}.name`, occurrence.id))
     } else if (normalizedName) occurrenceNames.set(normalizedName, occurrence.id)
     if (!tablesById.has(occurrence.baseTableId)) {
       issues.push(issue('error', 'TABLE_OCCURRENCE_TABLE_MISSING', `Table occurrence "${occurrence.name}" references a missing table`, `${occurrencePath}.baseTableId`, occurrence.id))
@@ -82,8 +83,27 @@ export function validateDesignProject(project: DesignProject): DesignValidationR
     if (relationship.leftOccurrenceId === relationship.rightOccurrenceId && relationship.leftFieldId === relationship.rightFieldId) {
       issues.push(issue('error', 'RELATIONSHIP_SELF_REFERENCE_INVALID', 'Relationship cannot connect a field to itself on the same occurrence', relationshipPath, relationship.id))
     }
+    if (leftField && rightField && !fieldTypesCompatible(leftField.type, rightField.type)) {
+      issues.push(issue('warning', 'RELATIONSHIP_FIELD_TYPE_MISMATCH', `Relationship fields use incompatible types: "${leftField.type}" and "${rightField.type}"`, relationshipPath, relationship.id))
+    }
     validateKeyPair(leftField, rightField, relationshipPath, relationship.id, issues)
   })
+
+  const graph = analyzeDesignGraph(project)
+  for (const occurrenceId of graph.isolatedOccurrenceIds) {
+    const occurrenceIndex = project.tableOccurrences.findIndex((candidate) => candidate.id === occurrenceId)
+    issues.push(issue('warning', 'TABLE_OCCURRENCE_ORPHAN', 'Table occurrence is not connected to any relationship', `tableOccurrences[${occurrenceIndex}]`, occurrenceId))
+  }
+  if (graph.components.length > 1 && project.tableOccurrences.length > 1) {
+    issues.push(issue('warning', 'RELATIONSHIP_GRAPH_DISCONNECTED', `Relationship graph contains ${graph.components.length} disconnected groups`, 'relationships'))
+  }
+  for (const cycle of graph.cycles) {
+    issues.push(issue('warning', 'RELATIONSHIP_GRAPH_CYCLE', `Relationship graph cycle detected: ${cycle.join(' -> ')}`, 'relationships', cycle[0]))
+  }
+  for (const relationshipId of graph.duplicateRelationshipIds) {
+    const relationshipIndex = project.relationships.findIndex((candidate) => candidate.id === relationshipId)
+    issues.push(issue('error', 'RELATIONSHIP_DUPLICATE', 'An identical relationship is already defined', `relationships[${relationshipIndex}]`, relationshipId))
+  }
 
   project.valueLists.forEach((valueList, valueListIndex) => {
     const valueListPath = `valueLists[${valueListIndex}]`
@@ -117,6 +137,9 @@ export function validateDesignProject(project: DesignProject): DesignValidationR
       else if (!componentCardsById.has(dependencyId)) issues.push(issue('error', 'COMPONENT_CARD_DEPENDENCY_MISSING', `Component card dependency "${dependencyId}" was not found`, `${cardPath}.dependencies[${dependencyIndex}]`, card.id))
     })
   })
+  for (const cycle of findDependencyCycles(project.componentCards)) {
+    issues.push(issue('error', 'COMPONENT_CARD_DEPENDENCY_CYCLE', `Component card dependency cycle detected: ${cycle.join(' -> ')}`, 'componentCards', cycle[0]))
+  }
 
   if (!Number.isFinite(project.canvasState.zoom) || project.canvasState.zoom <= 0) {
     issues.push(issue('error', 'CANVAS_ZOOM_INVALID', 'Canvas zoom must be greater than zero', 'canvasState.zoom'))
@@ -128,6 +151,19 @@ export function validateDesignProject(project: DesignProject): DesignValidationR
   const errors = issues.filter((candidate) => candidate.severity === 'error')
   const warnings = issues.filter((candidate) => candidate.severity === 'warning')
   return { valid: errors.length === 0, errors, warnings, issues }
+}
+
+function fieldTypesCompatible(left: string, right: string) {
+  const normalize = (value: string) => value.trim().toLocaleLowerCase()
+    .replace(/^calculation\s*[:(]?\s*/, '')
+    .replace(/[)]$/, '')
+  const leftType = normalize(left)
+  const rightType = normalize(right)
+  if (leftType === rightType) return true
+  const numeric = new Set(['number', 'numeric', 'decimal', 'integer'])
+  const temporal = new Set(['date', 'time', 'timestamp'])
+  return (numeric.has(leftType) && numeric.has(rightType))
+    || (temporal.has(leftType) && temporal.has(rightType))
 }
 
 function registerId(id: DesignEntityId, path: string, issues: DesignValidationIssue[], ids: Map<string, string>) {

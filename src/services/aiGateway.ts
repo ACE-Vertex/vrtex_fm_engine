@@ -32,6 +32,14 @@ const timestamp = () => new Date().toISOString()
 
 const fallbackRag: RagDocument[] = [
   {
+    id: 'relationship-design-safety',
+    title: 'FileMaker Relationship Design safety',
+    content: 'Base TableとTable Occurrenceを区別し、左右のフィールド型・演算子・孤立TO・重複関係・循環を確認します。Anchor-Buoyでは文脈ごとにTOを分け、既存IDを維持します。',
+    sourceType: 'relationship-design-rules',
+    tags: 'relationship design Anchor-Buoy table occurrence field type cycle orphan duplicate safety',
+    score: 1,
+  },
+  {
     id: 'fm-clipboard-root',
     title: 'FileMaker Clipboard XML root',
     content: 'fmxmlsnippet type="FMObjectList"を使用し、XMSCはScript、XMSSはStepを直下に保持します。',
@@ -210,5 +218,10 @@ export const aiGateway = {
   async run(request: AiProviderRequest) {
     if (isTauriRuntime()) return invoke<AiProviderResponse>('run_ai_assistant', { request })
     throw new Error('ブラウザプレビューではAI Providerへ接続できません。Tauriアプリから実行してください。')
+  },
+
+  async runRelationshipDesign(request: AiProviderRequest) {
+    if (isTauriRuntime()) return invoke<AiProviderResponse>('run_ai_relationship_design', { request })
+    throw new Error('AIリレーション設計はデスクトップアプリでのみ利用できます。')
   },
 }

@@ -18,6 +18,8 @@ pub struct AiProviderRequest {
     pub dry_run: bool,
     pub format: Option<String>,
     pub current_xml: Option<String>,
+    pub current_design: Option<String>,
+    pub response_schema: Option<serde_json::Value>,
     #[serde(default)]
     pub rag_context: Vec<String>,
     pub user_prompt: String,
@@ -68,14 +70,25 @@ impl AiProvider for OpenAiProvider {
     fn send<'a>(&'a self, request: &'a AiProviderRequest, prompt: String) -> ProviderFuture<'a> {
         Box::pin(async move {
             let client = reqwest::Client::new();
+            let mut body = serde_json::json!({
+                "model": request.model,
+                "input": prompt,
+                "store": false
+            });
+            if let Some(schema) = &request.response_schema {
+                body["text"] = serde_json::json!({
+                    "format": {
+                        "type": "json_schema",
+                        "name": "vrtex_relationship_design",
+                        "strict": false,
+                        "schema": schema
+                    }
+                });
+            }
             let response = client
                 .post("https://api.openai.com/v1/responses")
                 .bearer_auth(&self.api_key)
-                .json(&serde_json::json!({
-                    "model": request.model,
-                    "input": prompt,
-                    "store": false
-                }))
+                .json(&body)
                 .send()
                 .await
                 .map_err(|error| format!("OpenAI connection failed: {error}"))?;
@@ -280,5 +293,17 @@ mod tests {
         assert!(!sanitized.contains("test"));
         assert!(!sanitized.contains("use"));
         assert!(sanitized.contains("[APIキーは非表示]"));
+    }
+
+    #[test]
+    fn structured_request_fields_deserialize() {
+        let request: AiProviderRequest = serde_json::from_value(serde_json::json!({
+            "provider": "openai", "model": "gpt-5", "projectId": "p", "mode": "DESIGN",
+            "dryRun": true, "ragContext": [], "userPrompt": "design",
+            "currentDesign": "{}", "responseSchema": {"type": "object"}
+        }))
+        .unwrap();
+        assert!(request.current_design.is_some());
+        assert!(request.response_schema.is_some());
     }
 }

@@ -36,6 +36,8 @@ FileMaker ClipboardとSQLiteを含むデスクトップアプリ：
 pnpm run tauri dev
 ```
 
+Windowsデスクトップの `VRTEX FM Engine - 開発版` ショートカットからも同じ開発モードを起動できます。ショートカットは `scripts/start-dev.ps1` を呼び出し、初回のみ依存関係を自動準備します。
+
 ## Build and Test
 
 ```powershell

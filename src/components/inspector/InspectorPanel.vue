@@ -14,10 +14,12 @@ import { collectionCategories, useCollectionWorkspaceStore, type CollectionCateg
 import { useSettingsStore, type AppThemeId } from '../../stores/settings'
 import { useAiAssistantStore } from '../../stores/aiAssistant'
 import { useNavigationStore, type WorkspaceMode } from '../../stores/navigation'
+import { useRelationshipDesignerStore } from '../../stores/relationshipDesigner'
 import { aiGateway } from '../../services/aiGateway'
 import type { ClipboardItem } from '../../types/clipboard'
 import type { CollectionNode } from '../../types/library'
 import type { AiMessage, AiMode, AiSession, AiWorkspaceData, RagDocument, RiskLevel } from '../../types/ai'
+import type { DesignProjectSnapshot } from '../../types/design'
 import ValidationPanel from './ValidationPanel.vue'
 
 const $q = useQuasar()
@@ -29,6 +31,7 @@ const collectionWorkspace = useCollectionWorkspaceStore()
 const settings = useSettingsStore()
 const ai = useAiAssistantStore()
 const navigation = useNavigationStore()
+const relationshipDesigner = useRelationshipDesignerStore()
 const sending = ref(false)
 const receiving = ref(false)
 const workspaceSaving = ref(false)
@@ -84,6 +87,7 @@ interface WorkspaceSnapshot {
     codexRagEnabled?: boolean
     codexRequireDiffReview?: boolean
   }
+  relationshipDesigner?: DesignProjectSnapshot
 }
 
 const byteSize = computed(() => new TextEncoder().encode(editor.content).byteLength)
@@ -324,6 +328,11 @@ function workspaceContents(aiWorkspace: AiWorkspaceData) {
       codexRagEnabled: settings.codexRagEnabled,
       codexRequireDiffReview: settings.codexRequireDiffReview,
     },
+    relationshipDesigner: relationshipDesigner.project ? {
+      snapshotVersion: '1.0.0',
+      savedAt: new Date().toISOString(),
+      project: structuredClone(relationshipDesigner.project),
+    } : undefined,
   }, null, 2)
 }
 
@@ -494,6 +503,10 @@ async function restoreWorkspace(snapshot: WorkspaceSnapshot) {
 
   if (snapshot.navigation?.activeWorkspace) {
     navigation.setActive(snapshot.navigation.activeWorkspace)
+  }
+  if (snapshot.relationshipDesigner) {
+    const restored = relationshipDesigner.restoreSnapshot(snapshot.relationshipDesigner)
+    if (!restored.project) throw new Error(restored.validation.errors[0]?.message ?? 'Relationship design could not be restored')
   }
 }
 

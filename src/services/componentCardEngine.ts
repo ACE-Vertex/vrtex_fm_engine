@@ -1,4 +1,6 @@
 import { featureAccess } from './featureAccess'
+import { findDependencyCycles } from '../domain/design/graphAnalyzer'
+import { relationshipOperator } from '../domain/design/relationshipOperators'
 import type {
   ComponentCard,
   ComponentCardHistoryAction,
@@ -13,6 +15,26 @@ import type {
 } from '../types/design'
 
 const IMPLEMENTED_STATUSES = new Set<ComponentCardStatus>(['copied', 'applied', 'verified', 'skipped'])
+const STATUS_TRANSITIONS: Record<ComponentCardStatus, readonly ComponentCardStatus[]> = {
+  draft: ['aiGenerated', 'validating', 'skipped'],
+  aiGenerated: ['validating', 'validationError', 'warning', 'ready', 'skipped', 'failed'],
+  validating: ['validationError', 'warning', 'ready', 'failed'],
+  validationError: ['aiGenerated', 'validating', 'skipped'],
+  warning: ['aiGenerated', 'validating', 'ready', 'copied', 'applied', 'skipped', 'failed'],
+  ready: ['aiGenerated', 'validating', 'copied', 'applied', 'skipped', 'failed'],
+  copied: ['aiGenerated', 'validating', 'applied', 'verified', 'failed'],
+  applied: ['aiGenerated', 'validating', 'verified', 'failed'],
+  verified: ['aiGenerated', 'validating'],
+  skipped: ['aiGenerated', 'validating'],
+  failed: ['aiGenerated', 'validating', 'skipped'],
+}
+
+export class ComponentCardDependencyCycleError extends Error {
+  constructor(public readonly cycles: string[][]) {
+    super(`Component card dependency cycle detected: ${cycles.map((cycle) => cycle.join(' -> ')).join('; ')}`)
+    this.name = 'ComponentCardDependencyCycleError'
+  }
+}
 
 export interface ComponentCardDependencyState {
   ready: boolean
@@ -127,7 +149,7 @@ export function generateComponentCards(project: DesignProject): ComponentCard[] 
     }
   }
 
-  return optimizeSequence(generated).map((card, index) => ({ ...card, sequence: index + 1 }))
+  return optimizeComponentCardSequence(generated).map((card, index) => ({ ...card, sequence: index + 1 }))
 }
 
 export function generateComponentCardsFromAiResponse(response: string, projectId: string): ComponentCard[] {
@@ -231,6 +253,9 @@ export function dependencyState(card: ComponentCard, cards: ComponentCard[]): Co
 }
 
 export function transitionComponentCard(card: ComponentCard, status: ComponentCardStatus, detail?: string): ComponentCard {
+  if (status !== card.status && !STATUS_TRANSITIONS[card.status].includes(status)) {
+    throw new Error(`Invalid component card status transition: ${card.status} -> ${status}`)
+  }
   const now = new Date().toISOString()
   const action = statusAction(status)
   return {
@@ -253,7 +278,8 @@ function relationshipGuideCard(project: DesignProject, relationship: DesignRelat
   const leftField = leftTable?.fields.find((field) => field.id === relationship.leftFieldId)
   const rightField = rightTable?.fields.find((field) => field.id === relationship.rightFieldId)
   const title = `${leftOccurrence?.name ?? 'TO'} → ${rightOccurrence?.name ?? 'TO'}`
-  const expression = `${leftOccurrence?.name ?? '?'}::${leftField?.name ?? '?'} = ${rightOccurrence?.name ?? '?'}::${rightField?.name ?? '?'}`
+  const operator = relationshipOperator(relationship.operator)?.symbol ?? relationship.operator
+  const expression = `${leftOccurrence?.name ?? '?'}::${leftField?.name ?? '?'} ${operator} ${rightOccurrence?.name ?? '?'}::${rightField?.name ?? '?'}`
   return mergeCard(existing, {
     id: `card_relationship_${relationship.id}`,
     projectId: project.projectId,
@@ -335,14 +361,17 @@ function findLegacyCard(project: DesignProject, kind: ComponentCardKind, sourceI
   return project.componentCards.find((card) => card.kind === kind && card.sourceIds.includes(sourceId))
 }
 
-function optimizeSequence(cards: ComponentCard[]) {
+export function optimizeComponentCardSequence(cards: ComponentCard[]) {
+  const cycles = findDependencyCycles(cards)
+  if (cycles.length) throw new ComponentCardDependencyCycleError(cycles)
   const priority: Record<string, number> = { table: 10, valueList: 20, customFunction: 30, script: 40, scriptGroup: 41, relationship: 50, layout: 60, layoutObject: 70, button: 71, portal: 72, fieldPlacement: 73, calculation: 80, other: 90 }
   const remaining = [...cards].sort((a, b) => (priority[a.kind] ?? 99) - (priority[b.kind] ?? 99))
   const result: ComponentCard[] = []
   const emitted = new Set<string>()
   while (remaining.length) {
     const availableIndex = remaining.findIndex((card) => card.dependencies.every((id) => emitted.has(id) || !cards.some((candidate) => candidate.id === id)))
-    const [card] = remaining.splice(availableIndex < 0 ? 0 : availableIndex, 1)
+    if (availableIndex < 0) throw new ComponentCardDependencyCycleError(findDependencyCycles(remaining))
+    const [card] = remaining.splice(availableIndex, 1)
     if (!card) break
     result.push(card)
     emitted.add(card.id)

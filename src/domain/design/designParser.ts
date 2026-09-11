@@ -1,4 +1,5 @@
 import { normalizeRelationshipOperator } from './relationshipOperators'
+import { validateAiDesignSchema } from './schemaValidator'
 import { validateDesignProject } from './designValidator'
 import {
   DESIGN_MODEL_VERSION,
@@ -47,6 +48,8 @@ export function parseAiDesign(input: string | unknown): DesignParseResult {
   const parsed = parseInput(input)
   if (!parsed.value) return failed(parsed.issues)
   const source = parsed.value
+  const schemaIssues = validateAiDesignSchema(source)
+  if (schemaIssues.length) return failed(schemaIssues)
   const projectSource = object(source.project)
   if (!projectSource) {
     return failed([validationIssue('error', 'AI_DESIGN_PROJECT_REQUIRED', 'AI Design JSON requires a project object', 'project')])

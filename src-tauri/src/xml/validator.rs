@@ -63,9 +63,12 @@ pub fn validate(xml: &str, expected_format: Option<&str>) -> ValidationReport {
     }
 
     if let Some(expected) = expected_format {
-        if detection.format != "UNKNOWN" && detection.format != expected {
+        // A known, positively detected FileMaker object must never be delivered
+        // under a different Windows Clipboard format. Keep UNKNOWN permissive so
+        // captured/newer FileMaker objects remain round-trippable.
+        if detection.format != "UNKNOWN" && !detection.format.eq_ignore_ascii_case(expected) {
             issues.push(issue(
-                ValidationLevel::Warning,
+                ValidationLevel::Error,
                 "FORMAT_MISMATCH",
                 format!("Expected {expected}, detected {}", detection.format),
             ));
@@ -163,12 +166,44 @@ mod tests {
         let report = validate(xml, Some("XMSS"));
         assert!(report.valid);
         assert!(report.issues.iter().any(|issue| {
-            issue.code == "STEP_ID_UNKNOWN" && matches!(issue.level, ValidationLevel::Warning)
+            issue.code == "STEP_ID_UNKNOWN"
+                && matches!(issue.level, ValidationLevel::Warning)
         }));
         assert!(report
             .issues
             .iter()
             .any(|issue| issue.code == "PAYLOAD_VALID"));
+    }
+
+    #[test]
+    fn detected_format_mismatch_is_fail_closed() {
+        let xml =
+            "<fmxmlsnippet type=\"FMObjectList\"><Field name=\"horse_id\" /></fmxmlsnippet>";
+        let report = validate(xml, Some("XMTB"));
+        assert!(!report.valid);
+        assert!(report.issues.iter().any(|issue| {
+            issue.code == "FORMAT_MISMATCH"
+                && matches!(issue.level, ValidationLevel::Error)
+        }));
+        assert!(!report
+            .issues
+            .iter()
+            .any(|issue| issue.code == "PAYLOAD_VALID"));
+    }
+
+    #[test]
+    fn unknown_future_format_remains_round_trip_compatible() {
+        let xml =
+            "<fmxmlsnippet type=\"FMObjectList\"><SomethingNew name=\"Future\" /></fmxmlsnippet>";
+        let report = validate(xml, Some("XNEW"));
+        assert!(report
+            .issues
+            .iter()
+            .any(|issue| issue.code == "FORMAT_UNKNOWN"));
+        assert!(!report
+            .issues
+            .iter()
+            .any(|issue| issue.code == "FORMAT_MISMATCH"));
     }
 }
 

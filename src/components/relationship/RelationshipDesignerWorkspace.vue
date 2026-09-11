@@ -4,6 +4,10 @@ import { useQuasar } from 'quasar'
 import RelationshipEditorDialog from './RelationshipEditorDialog.vue'
 import { relationshipDesignSample } from '../../data/relationshipDesignSample'
 import { relationshipOperator } from '../../domain/design/relationshipOperators'
+import { AI_DESIGN_JSON_SCHEMA } from '../../domain/design/aiDesignSchema'
+import { diffDesignProjects, type DesignProjectDiff } from '../../domain/design/designDiff'
+import { aiGateway } from '../../services/aiGateway'
+import { knowledgeGateway } from '../../services/knowledgeGateway'
 import { clipboardGateway } from '../../services/clipboardGateway'
 import { dependencyState } from '../../services/componentCardEngine'
 import { featureAccess } from '../../services/featureAccess'
@@ -12,7 +16,7 @@ import { isTauriRuntime, nativeGateway } from '../../services/nativeGateway'
 import { useRelationshipDesignerStore } from '../../stores/relationshipDesigner'
 import { useAiAssistantStore } from '../../stores/aiAssistant'
 import { useLocaleStore } from '../../stores/locale'
-import type { ComponentCard, ComponentCardStatus, DesignRelationship, TableOccurrence } from '../../types/design'
+import type { ComponentCard, ComponentCardStatus, DesignProject, DesignRelationship, TableOccurrence } from '../../types/design'
 
 const $q = useQuasar()
 const designer = useRelationshipDesignerStore()
@@ -43,6 +47,14 @@ const cardDetailOpen = ref(false)
 const cardEditTitle = ref('')
 const cardEditDescription = ref('')
 const repairingCard = ref(false)
+const aiDesignDialogOpen = ref(false)
+const aiDesignPrompt = ref('')
+const aiDesignRunning = ref(false)
+const aiDesignError = ref('')
+const aiDesignResponse = ref('')
+const aiDesignProposal = ref<DesignProject | null>(null)
+const aiDesignDiff = ref<DesignProjectDiff | null>(null)
+const aiDesignValidation = ref(designer.validation)
 let componentCardScrollAnimationFrame = 0
 let componentCardScrollTarget = 0
 let componentCardScrollElement: HTMLElement | null = null
@@ -99,7 +111,7 @@ const fileMakerSendState = computed(() => {
   if (selectedValidationErrors.value.length) return { available: false, reason: text.value.resolveValidationErrors }
   if (card.status === 'validationError' || card.status === 'failed') return { available: false, reason: text.value.generatedXmlInvalid }
   if (card.executionMode !== 'clipboard') return { available: false, reason: text.value.manualStep }
-  if (!['ready', 'copied', 'applied', 'verified'].includes(card.status) || !card.generatedXml?.trim() || !card.clipboardFormat?.trim()) {
+  if (!['ready', 'copied', 'applied', 'verified'].includes(card.status) || !card.validationResult.valid || !card.validatedXml?.trim() || !card.clipboardFormat?.trim()) {
     return { available: false, reason: text.value.generatedXmlPending }
   }
   if (!isTauriRuntime()) return { available: false, reason: text.value.desktopSendRequired }
@@ -124,6 +136,10 @@ const viewportGridStyle = computed(() => {
   } as CSSProperties
 })
 const zoomLabel = computed(() => `${Math.round((project.value?.canvasState.zoom ?? 1) * 100)}%`)
+const aiDesignChangeCount = computed(() => aiDesignDiff.value
+  ? Object.values(aiDesignDiff.value).filter((value): value is DesignProjectDiff[keyof Omit<DesignProjectDiff, 'hasDestructiveChanges'>] => typeof value === 'object')
+    .reduce((total, change) => total + change.added.length + change.changed.length + change.deleted.length, 0)
+  : 0)
 const selectionBoxStyle = computed(() => {
   const box = selectionBox.value
   if (!box) return null
@@ -183,6 +199,7 @@ const text = computed(() => locale.language === 'ja' ? {
   sendComplete: 'FileMakerクリップボードへのセットが完了しました。', sendFailed: 'FileMakerへの送信に失敗しました。',
   cardDetail: 'カード詳細', validateCard: '検証', applied: '貼り付け済み', verified: '動作確認済み', nextCard: '次のカード', saveChanges: '変更を保存',
   dependencyPending: '依存カード未完了', manualStep: '手動作業', xmlSource: 'XML SOURCE', validationResult: 'VALIDATION', history: 'HISTORY',
+  askAi: 'AIに設計を相談', undoAi: 'AI適用を元に戻す', unsaved: '未保存',
 } : {
   title: 'AI Relationship Designer', project: 'AI Design Project', tables: 'Tables', occurrences: 'Table Occurrences', relationships: 'Relationships',
   canvas: 'RELATIONSHIP CANVAS', fit: 'Fit to Screen', reset: 'Reset View', inspector: 'Inspector', noSelection: 'Select a TO card to inspect it.',
@@ -195,6 +212,7 @@ const text = computed(() => locale.language === 'ja' ? {
   sendComplete: 'FileMaker clipboard data is ready.', sendFailed: 'Failed to send data to FileMaker.',
   cardDetail: 'Card Details', validateCard: 'Validate', applied: 'Mark Applied', verified: 'Mark Verified', nextCard: 'Next Card', saveChanges: 'Save Changes',
   dependencyPending: 'Dependencies pending', manualStep: 'Manual Step', xmlSource: 'XML SOURCE', validationResult: 'VALIDATION', history: 'HISTORY',
+  askAi: 'Ask AI to Design', undoAi: 'Undo AI Apply', unsaved: 'Unsaved',
 })
 
 function tableFor(occurrence: TableOccurrence) {
@@ -203,16 +221,16 @@ function tableFor(occurrence: TableOccurrence) {
 
 async function sendFocusedObjectToFileMaker() {
   const card = focusedComponentCard.value
-  if (!fileMakerSendState.value.available || !card?.generatedXml || !card.clipboardFormat) return
+  if (!fileMakerSendState.value.available || !card?.validatedXml || !card.clipboardFormat) return
   sendingToFileMaker.value = true
   try {
-    const report = await nativeGateway.validateXml(card.generatedXml, card.clipboardFormat)
+    const report = await nativeGateway.validateXml(card.validatedXml, card.clipboardFormat)
     if (!report.valid) {
       const detail = report.issues.find((issue) => issue.level === 'error')?.message ?? text.value.generatedXmlInvalid
       $q.notify({ type: 'negative', position: 'bottom', icon: 'error_outline', message: text.value.sendFailed, caption: detail })
       return
     }
-    await clipboardGateway.set(card.clipboardFormat, card.generatedXml)
+    await clipboardGateway.set(card.clipboardFormat, card.validatedXml)
     designer.setComponentCardStatus(card.id, 'copied', 'FileMakerクリップボードへ送信')
     $q.notify({ type: 'positive', position: 'bottom', icon: 'outbox', message: text.value.sendComplete, caption: `${card.title} · ${card.clipboardFormat}` })
   } catch (error) {
@@ -250,7 +268,8 @@ function openCardDetails(card: ComponentCard) {
 function cardCanCopy(card: ComponentCard) {
   return card.executionMode === 'clipboard'
     && ['ready', 'copied', 'applied', 'verified'].includes(card.status)
-    && Boolean(card.generatedXml?.trim() && card.clipboardFormat?.trim())
+    && card.validationResult.valid
+    && Boolean(card.validatedXml?.trim() && card.clipboardFormat?.trim())
     && isTauriRuntime()
 }
 
@@ -932,6 +951,103 @@ function deleteRelationship(id: string) {
   closeRelationshipDialog()
 }
 
+function openAiDesignDialog() {
+  aiDesignDialogOpen.value = true
+  aiDesignError.value = ''
+}
+
+function closeAiDesignDialog() {
+  if (aiDesignRunning.value) return
+  aiDesignDialogOpen.value = false
+}
+
+async function requestAiDesign() {
+  const current = project.value
+  const prompt = aiDesignPrompt.value.trim()
+  if (!current || !prompt || aiDesignRunning.value) return
+  aiDesignRunning.value = true
+  aiDesignError.value = ''
+  aiDesignProposal.value = null
+  aiDesignDiff.value = null
+  try {
+    const [rag, relationshipPack] = await Promise.all([
+      aiGateway.searchRag(`relationship design anchor buoy ${prompt}`, 8),
+      knowledgeGateway.load('relationship-design-rules').catch(() => null),
+    ])
+    const packContext = relationshipPack && relationshipPack.enabled
+      ? [`${relationshipPack.name}\nRules:\n${relationshipPack.rules.join('\n')}\nAnti-patterns:\n${relationshipPack.antiPatterns.join('\n')}\nValidation:\n${relationshipPack.validationHints.join('\n')}`]
+      : []
+    const response = await aiGateway.runRelationshipDesign({
+      provider: aiAssistant.provider,
+      model: aiAssistant.model,
+      projectId: current.projectId,
+      mode: 'DESIGN',
+      dryRun: true,
+      currentDesign: JSON.stringify(aiDesignContract(current)),
+      responseSchema: AI_DESIGN_JSON_SCHEMA as unknown as Record<string, unknown>,
+      ragContext: [...packContext, ...rag.map((document) => `${document.title}\n${document.content}`)],
+      userPrompt: prompt,
+    })
+    aiDesignResponse.value = response.content
+    const parsed = designer.previewAiDesign(response.content)
+    aiDesignValidation.value = parsed.validation
+    if (!parsed.project) {
+      aiDesignError.value = parsed.validation.errors[0]?.message ?? 'AI提案を設計モデルとして読み込めませんでした。'
+      return
+    }
+    aiDesignProposal.value = parsed.project
+    aiDesignDiff.value = diffDesignProjects(current, parsed.project)
+  } catch (error) {
+    aiDesignError.value = error instanceof Error ? error.message : String(error)
+  } finally {
+    aiDesignRunning.value = false
+  }
+}
+
+async function applyAiDesign() {
+  if (!aiDesignResponse.value || !aiDesignValidation.value.valid) return
+  const result = designer.applyAiProposal(aiDesignResponse.value)
+  if (!result.project || !result.validation.valid) {
+    aiDesignValidation.value = result.validation
+    aiDesignError.value = result.validation.errors[0]?.message ?? 'AI提案を適用できませんでした。'
+    return
+  }
+  aiDesignDialogOpen.value = false
+  $q.notify({ type: 'positive', message: locale.language === 'ja' ? 'AI設計案を適用しました。必要なら元に戻せます。' : 'AI design proposal applied. You can undo it.' })
+  await nextTick()
+  await fitToScreen()
+}
+
+async function undoAiDesign() {
+  if (!designer.undoLastAiProposal()) return
+  $q.notify({ type: 'info', message: locale.language === 'ja' ? 'AI設計案の適用前へ戻しました。' : 'Restored the design from before AI apply.' })
+  await nextTick()
+  await fitToScreen()
+}
+
+function aiDesignContract(current: DesignProject) {
+  return {
+    modelVersion: current.modelVersion,
+    project: {
+      projectId: current.projectId,
+      name: current.name,
+      description: current.description,
+      createdAt: current.createdAt,
+      updatedAt: current.updatedAt,
+      extensions: current.extensions,
+    },
+    tables: current.tables,
+    tableOccurrences: current.tableOccurrences,
+    relationships: current.relationships,
+    valueLists: current.valueLists,
+    scripts: current.scripts,
+    layouts: current.layouts,
+    componentCards: current.componentCards,
+    canvasState: current.canvasState,
+    aiDesignInfo: current.aiDesignInfo,
+  }
+}
+
 function clamp(value: number, minimum: number, maximum: number) { return Math.min(maximum, Math.max(minimum, value)) }
 
 async function initializeDesigner() {
@@ -1027,6 +1143,10 @@ onBeforeUnmount(() => {
       <header class="canvas-toolbar">
         <div><span class="material-icons">hub</span><div><small>{{ text.canvas }}</small><strong>{{ text.title }}</strong></div></div>
         <div class="canvas-actions">
+          <span v-if="designer.dirty" class="dirty-state"><i />{{ text.unsaved }}</span>
+          <button type="button" class="ask-ai-button" @click="openAiDesignDialog"><span class="material-icons">auto_awesome</span>{{ text.askAi }}</button>
+          <button v-if="designer.lastProposalSnapshot" type="button" @click="undoAiDesign"><span class="material-icons">undo</span>{{ text.undoAi }}</button>
+          <i />
           <button type="button" aria-label="Zoom out" @click="zoomBy(.85)"><span class="material-icons">remove</span></button>
           <span class="zoom-value">{{ zoomLabel }}</span>
           <button type="button" aria-label="Zoom in" @click="zoomBy(1.18)"><span class="material-icons">add</span></button>
@@ -1196,6 +1316,51 @@ onBeforeUnmount(() => {
       @delete="deleteRelationship"
     />
 
+    <div v-if="aiDesignDialogOpen" class="ai-design-backdrop" @pointerdown.self="closeAiDesignDialog" @keydown.esc="closeAiDesignDialog">
+      <section class="ai-design-dialog" role="dialog" aria-modal="true" aria-label="AI relationship design proposal">
+        <header>
+          <span class="material-icons">auto_awesome</span>
+          <div><small>HUMAN-IN-THE-LOOP</small><h2>{{ text.askAi }}</h2></div>
+          <button type="button" :disabled="aiDesignRunning" @click="closeAiDesignDialog"><span class="material-icons">close</span></button>
+        </header>
+        <div class="ai-design-body">
+          <label>
+            {{ locale.language === 'ja' ? '設計してほしい内容' : 'What should AI design?' }}
+            <textarea v-model="aiDesignPrompt" rows="4" :disabled="aiDesignRunning" :placeholder="locale.language === 'ja' ? '例：請求書から顧客を参照できるリレーションを、安全なAnchor-Buoy構成で追加してください。' : 'Example: Add a safe Anchor-Buoy relationship from invoices to customers.'" />
+          </label>
+          <button class="proposal-run-button" type="button" :disabled="aiDesignRunning || !aiDesignPrompt.trim()" @click="requestAiDesign">
+            <span class="material-icons">{{ aiDesignRunning ? 'progress_activity' : 'send' }}</span>
+            {{ aiDesignRunning ? (locale.language === 'ja' ? '設計案を作成中…' : 'Creating proposal…') : (locale.language === 'ja' ? '設計案を作成' : 'Create Proposal') }}
+          </button>
+          <p v-if="aiDesignError" class="proposal-error"><span class="material-icons">error_outline</span>{{ aiDesignError }}</p>
+          <section v-if="aiDesignProposal && aiDesignDiff" class="proposal-preview">
+            <header>
+              <div><small>VALIDATED PREVIEW</small><strong>{{ aiDesignProposal.name }}</strong></div>
+              <span :class="{ destructive: aiDesignDiff.hasDestructiveChanges }">{{ aiDesignChangeCount }} changes</span>
+            </header>
+            <div class="proposal-validation">
+              <span :class="{ invalid: !aiDesignValidation.valid }"><i class="material-icons">{{ aiDesignValidation.valid ? 'verified' : 'error' }}</i>{{ aiDesignValidation.errors.length }} errors</span>
+              <span><i class="material-icons">warning</i>{{ aiDesignValidation.warnings.length }} warnings</span>
+            </div>
+            <div class="proposal-diff-grid">
+              <article v-for="(change, kind) in { tables: aiDesignDiff.tables, occurrences: aiDesignDiff.occurrences, relationships: aiDesignDiff.relationships, valueLists: aiDesignDiff.valueLists, scripts: aiDesignDiff.scripts, layouts: aiDesignDiff.layouts }" :key="kind">
+                <strong>{{ kind }}</strong>
+                <span class="added">+ {{ change.added.length }}</span>
+                <span class="changed">~ {{ change.changed.length }}</span>
+                <span class="deleted">− {{ change.deleted.length }}</span>
+                <small v-if="change.deleted.length">{{ change.deleted.join(', ') }}</small>
+              </article>
+            </div>
+            <details v-if="aiDesignValidation.issues.length"><summary>{{ locale.language === 'ja' ? '検証結果を確認' : 'Review validation' }}</summary><ul><li v-for="issue in aiDesignValidation.issues" :key="`${issue.code}-${issue.path}`" :class="issue.severity">{{ issue.code }} · {{ issue.message }}</li></ul></details>
+          </section>
+        </div>
+        <footer>
+          <p><span class="material-icons">shield</span>{{ locale.language === 'ja' ? '承認するまで現在の設計は変更されません。適用後も元に戻せます。' : 'The current design is unchanged until approval, and applying can be undone.' }}</p>
+          <div><button type="button" :disabled="aiDesignRunning" @click="closeAiDesignDialog">{{ locale.language === 'ja' ? 'キャンセル' : 'Cancel' }}</button><button class="proposal-apply-button" type="button" :disabled="!aiDesignProposal || !aiDesignValidation.valid || aiDesignRunning" @click="applyAiDesign"><span class="material-icons">check_circle</span>{{ locale.language === 'ja' ? '承認して適用' : 'Approve & Apply' }}</button></div>
+        </footer>
+      </section>
+    </div>
+
     <div v-if="cardDetailOpen && designer.selectedComponentCard" class="component-card-backdrop" @pointerdown.self="closeCardDetails" @keydown.esc="closeCardDetails">
       <section class="component-card-dialog" role="dialog" aria-modal="true" aria-labelledby="component-card-title">
         <header>
@@ -1272,4 +1437,6 @@ onBeforeUnmount(() => {
 .occurrence-name-backdrop{background:color-mix(in srgb,var(--bg-deep) 80%,transparent)}
 @media(max-width:1420px){.relationship-workspace{grid-template-columns:185px minmax(640px,1fr) 235px}.canvas-actions button{font-size:0}.canvas-actions button .material-icons{font-size:15px}}
 .validation-actions{display:flex;align-items:center;gap:5px}.card-validation-detail>header button:disabled{cursor:not-allowed;opacity:.45}
+.dirty-state{display:flex;align-items:center;margin-right:4px;gap:5px;color:var(--amber);font:8px "Cascadia Code",monospace}.dirty-state i{width:7px;height:7px;border-radius:50%;background:var(--amber);box-shadow:0 0 7px color-mix(in srgb,var(--amber) 70%,transparent)}.canvas-actions .ask-ai-button{border-color:var(--blue);background:linear-gradient(120deg,rgba(var(--accent-rgb),.25),var(--bg-panel-raised));color:var(--text)}
+.ai-design-backdrop{position:fixed;z-index:9300;display:grid;inset:0;place-items:center;background:color-mix(in srgb,var(--bg-deep) 84%,transparent);backdrop-filter:blur(7px)}.ai-design-dialog{display:grid;width:min(900px,calc(100vw - 48px));height:min(780px,calc(100vh - 48px));overflow:hidden;grid-template-rows:72px minmax(0,1fr) 70px;border:1px solid var(--blue-bright);border-radius:8px;background:var(--bg-panel-raised);box-shadow:0 28px 90px rgba(0,0,0,.62),0 0 34px rgba(var(--accent-rgb),.16)}.ai-design-dialog>header{display:grid;align-items:center;padding:0 18px;grid-template-columns:40px minmax(0,1fr) 32px;gap:11px;border-bottom:1px solid var(--line-bright);background:linear-gradient(110deg,rgba(var(--accent-rgb),.2),var(--bg-panel-raised))}.ai-design-dialog>header>.material-icons{display:grid;width:38px;height:38px;place-items:center;border-radius:6px;background:var(--blue-soft);color:var(--blue-bright)}.ai-design-dialog>header small,.proposal-preview header small{color:var(--blue-bright);font:8px "Cascadia Code",monospace;letter-spacing:.12em}.ai-design-dialog h2{margin:3px 0 0;color:var(--text);font-size:18px}.ai-design-dialog>header button{border:0;background:transparent;color:var(--muted);cursor:pointer}.ai-design-body{overflow-y:auto;padding:18px}.ai-design-body>label{display:flex;flex-direction:column;color:var(--muted);font-size:10px}.ai-design-body textarea{margin-top:7px;padding:12px;border:1px solid var(--line-bright);border-radius:5px;outline:0;background:var(--bg-inset);color:var(--text);font:12px/1.55 "Segoe UI",sans-serif;resize:vertical}.ai-design-body textarea:focus{border-color:var(--blue-bright);box-shadow:0 0 0 2px rgba(var(--accent-rgb),.13)}.proposal-run-button,.proposal-apply-button{display:flex;height:36px;align-items:center;padding:0 13px;gap:5px;border:1px solid var(--blue);border-radius:4px;background:var(--blue-soft);color:var(--text);cursor:pointer}.proposal-run-button{margin-top:10px;margin-left:auto}.proposal-run-button:disabled,.proposal-apply-button:disabled{cursor:not-allowed;opacity:.4}.proposal-error{display:flex;margin:12px 0 0;padding:10px;gap:7px;border-left:2px solid var(--red);background:color-mix(in srgb,var(--red) 8%,transparent);color:var(--red);font-size:10px}.proposal-preview{margin-top:14px;border:1px solid var(--line-bright);border-radius:5px;background:var(--bg-panel)}.proposal-preview>header{display:flex;height:58px;align-items:center;justify-content:space-between;padding:0 13px;border-bottom:1px solid var(--line)}.proposal-preview>header>div{display:flex;flex-direction:column}.proposal-preview>header strong{margin-top:3px;color:var(--text)}.proposal-preview>header>span{padding:4px 8px;border:1px solid var(--green);border-radius:12px;color:var(--green);font:8px "Cascadia Code",monospace}.proposal-preview>header>span.destructive{border-color:var(--red);color:var(--red)}.proposal-validation{display:flex;padding:9px 12px;gap:14px;border-bottom:1px solid var(--line)}.proposal-validation span{display:flex;align-items:center;gap:4px;color:var(--muted);font-size:9px}.proposal-validation .material-icons{color:var(--green);font-size:14px}.proposal-validation span.invalid,.proposal-validation span.invalid .material-icons{color:var(--red)}.proposal-diff-grid{display:grid;padding:10px;grid-template-columns:repeat(3,1fr);gap:7px}.proposal-diff-grid article{display:grid;min-width:0;padding:8px;grid-template-columns:1fr repeat(3,auto);gap:5px;border:1px solid var(--line);border-radius:3px;background:var(--bg-inset);color:var(--muted);font:8px "Cascadia Code",monospace}.proposal-diff-grid article strong{overflow:hidden;color:var(--text);text-overflow:ellipsis}.proposal-diff-grid .added{color:var(--green)}.proposal-diff-grid .changed{color:var(--amber)}.proposal-diff-grid .deleted,.proposal-preview li.error{color:var(--red)}.proposal-diff-grid article small{overflow:hidden;grid-column:1/5;color:var(--red);text-overflow:ellipsis;white-space:nowrap}.proposal-preview details{margin:0 10px 10px;border:1px solid var(--line);border-radius:3px}.proposal-preview summary{padding:8px;color:var(--muted);font-size:9px;cursor:pointer}.proposal-preview ul{max-height:130px;overflow-y:auto;margin:0;padding:4px 12px 9px 28px;color:var(--amber);font-size:8.5px}.ai-design-dialog>footer{display:flex;align-items:center;justify-content:space-between;padding:0 18px;gap:16px;border-top:1px solid var(--line-bright);background:var(--bg-inset)}.ai-design-dialog>footer p{display:flex;max-width:500px;margin:0;align-items:center;gap:7px;color:var(--muted);font-size:9px}.ai-design-dialog>footer p .material-icons{color:var(--blue-bright);font-size:16px}.ai-design-dialog>footer>div{display:flex;gap:8px}.ai-design-dialog>footer>div>button:not(.proposal-apply-button){height:36px;padding:0 13px;border:1px solid var(--line-bright);border-radius:4px;background:var(--bg-panel);color:var(--muted);cursor:pointer}
 </style>
